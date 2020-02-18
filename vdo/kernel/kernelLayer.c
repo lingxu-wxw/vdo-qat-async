@@ -948,6 +948,10 @@ int prepareToModifyKernelLayer(KernelLayer       *layer,
     // Nothing needs doing right now for a write policy change.
   }
 
+  if (config->compressPolicy != extantConfig->compressPolicy) {
+    // Nothing needs doing right now for a write policy change.
+  }
+
   if (config->owningTarget->len != extantConfig->owningTarget->len) {
     size_t logicalBytes = to_bytes(config->owningTarget->len);
     if ((logicalBytes % VDO_BLOCK_SIZE) != 0) {
@@ -994,6 +998,13 @@ int modifyKernelLayer(KernelLayer  *layer,
             config->poolName, getConfigWritePolicyString(extantConfig),
             getConfigWritePolicyString(config));
     setWritePolicy(layer->kvdo.vdo, config->writePolicy);
+  }
+
+  if (config->compressPolicy != extantConfig->compressPolicy) {
+    logInfo("Modifying device '%s' compress policy from %s to %s",
+            config->poolName, getConfigCompressPolicyString(extantConfig),
+            getConfigCompressPolicyString(config));
+    setCompressPolicy(layer->kvdo.vdo, config->compressPolicy);
   }
 
   if (config->owningTarget->len != extantConfig->owningTarget->len) {
