@@ -571,7 +571,9 @@ void kvdoCompressDataVIO(DataVIO *dataVIO)
     return;
   }
 
-  //launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
+  CompressPolicy compressPolicy = dataKVIO->kvio.vio.vdo.loadingConfig.compressPolicy;
+
+  // launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
   //                         CPU_Q_ACTION_COMPRESS_BLOCK);
   launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithQAT, NULL, CPU_Q_ACTION_COMPRESS_BLOCK);
 }
