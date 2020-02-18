@@ -47,28 +47,28 @@ static Cpa32U inst_num = 0;
 static boolean_t qat_dc_init_done = B_FALSE;
 static struct kmem_cache *qat_add_cache;
 
-static void *
-qat_add_cache_alloc(void)
+/**********************************************************************/
+static void *qat_add_cache_alloc(void)
 {
 	return (kmem_cache_alloc(qat_add_cache, GFP_KERNEL));
 }
 
-static void
-qat_add_cache_free(void *add_cache)
+/**********************************************************************/
+static void qat_add_cache_free(void *add_cache)
 {
 	kmem_cache_free(qat_add_cache, add_cache);
 }
 
-boolean_t
-qat_dc_use_accel(size_t s_len)
+/**********************************************************************/
+boolean_t qat_dc_use_accel(size_t s_len)
 {
 	return (qat_dc_init_done &&
 	    s_len >= QAT_MIN_BUF_SIZE &&
 	    s_len <= QAT_MAX_BUF_SIZE);
 }
 
-static void
-qat_dc_callback(void *p_callback, CpaStatus status)
+/**********************************************************************/
+static void qat_dc_callback(void *p_callback, CpaStatus status)
 {
 	DataKVIO *dataKVIO = (DataKVIO *)p_callback;
 	QATCallbackTag *qat_p_callback = &dataKVIO->qatCallbackTag;
@@ -86,8 +86,9 @@ qat_dc_callback(void *p_callback, CpaStatus status)
 
 	DataVIO *dataVIO = &dataKVIO->dataVIO;
 	ReadBlock *readBlock = &dataKVIO->readBlock;
-	if (qat_p_callback->dir == QAT_COMPRESS)
-	{
+
+	if (qat_p_callback->dir == QAT_COMPRESS) {
+
 		if (status != CPA_STATUS_SUCCESS) {
 			status = CPA_STATUS_FAIL;
 			dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
@@ -126,35 +127,27 @@ qat_dc_callback(void *p_callback, CpaStatus status)
 		dc_results->produced = 0;
 		status = cpaDcGenerateFooter(session_handle,
 		    flat_buf_dst, dc_results);
-		if (status != CPA_STATUS_SUCCESS)
-		{
+		if (status != CPA_STATUS_SUCCESS) {
 			dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
 			goto fail;
 		}
 		Cpa32U destLen = compressed_sz + dc_results->produced + ZLIB_HEAD_SZ;
 
-		if (status == CPA_STATUS_SUCCESS && destLen <= VDO_BLOCK_SIZE) 
-		{
-    			// The scratch block will be used to contain the compressed data.
-    			dataVIO->compression.data = dataKVIO->scratchBlock;
-    			dataVIO->compression.size = destLen;
+		if (status == CPA_STATUS_SUCCESS && destLen <= VDO_BLOCK_SIZE) {
+    		// The scratch block will be used to contain the compressed data.
+    		dataVIO->compression.data = dataKVIO->scratchBlock;
+    		dataVIO->compression.size = destLen;
+  		} else {
+			// Use block size plus one as an indicator for uncompressible data.
+    		dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
   		} 
-			else
-		{
-    			// Use block size plus one as an indicator for uncompressible data.
-    			dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
-  		}
+	} 
 
-	}
-	else
-	{
-                if (status != CPA_STATUS_SUCCESS)
-		{
+	else {
+		if (status != CPA_STATUS_SUCCESS) {
 			readBlock->status = VDO_INVALID_FRAGMENT; 
 			status = CPA_STATUS_FAIL;	
-		}
-		else
-		{
+		} else {
 			readBlock->data = dataKVIO->scratchBlock;
 		}
 	}
@@ -167,21 +160,18 @@ fail:
 	QAT_PHYS_CONTIG_FREE(buf_list_dst);
 
 
-	if (qat_p_callback->dir == QAT_COMPRESS)
-	{
+	if (qat_p_callback->dir == QAT_COMPRESS) {
 		qat_add_cache_free(add);
 		kvdoEnqueueDataVIOCallback(dataKVIO);
-	}
-	else
-	{
+	} else {
 		ReadBlock *readBlock = &dataKVIO->readBlock;
 		readBlock->callback(dataKVIO);
 	}
 
 }
 
-static void
-qat_dc_clean(void)
+/**********************************************************************/
+static void qat_dc_clean(void)
 {
 	Cpa16U buff_num = 0;
 	Cpa16U num_inter_buff_lists = 0;
@@ -217,8 +207,8 @@ qat_dc_clean(void)
 	qat_dc_init_done = B_FALSE;
 }
 
-int
-qat_dc_init(void)
+/**********************************************************************/
+int qat_dc_init(void)
 {
 	CpaStatus status = CPA_STATUS_SUCCESS;
 	Cpa32U sess_size = 0;
@@ -229,19 +219,23 @@ qat_dc_init(void)
 	CpaDcSessionSetupData sd = {0};
 
 	status = cpaDcGetNumInstances(&num_inst);
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		return (-1);
+	}
 
 	/* if the user has configured no QAT compression units just return */
-	if (num_inst == 0)
+	if (num_inst == 0) {
 		return (0);
+	}
 
-	if (num_inst > QAT_DC_MAX_INSTANCES)
+	if (num_inst > QAT_DC_MAX_INSTANCES) {
 		num_inst = QAT_DC_MAX_INSTANCES;
+	}
 
 	status = cpaDcGetInstances(num_inst, &dc_inst_handles[0]);
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		return (-1);
+	}
 
 	for (Cpa16U i = 0; i < num_inst; i++) {
 		cpaDcSetAddressTranslation(dc_inst_handles[i],
@@ -250,32 +244,37 @@ qat_dc_init(void)
 		status = cpaDcBufferListGetMetaSize(dc_inst_handles[i],
 		    1, &buff_meta_size);
 
-		if (status == CPA_STATUS_SUCCESS)
+		if (status == CPA_STATUS_SUCCESS) {
 			status = cpaDcGetNumIntermediateBuffers(
 			    dc_inst_handles[i], &num_inter_buff_lists);
+		}
 
-		if (status == CPA_STATUS_SUCCESS && num_inter_buff_lists != 0)
+		if (status == CPA_STATUS_SUCCESS && num_inter_buff_lists != 0) {
 			status = QAT_PHYS_CONTIG_ALLOC(&buffer_array[i],
 			    num_inter_buff_lists *
 			    sizeof (CpaBufferList *));
+		}
 
 		for (buff_num = 0; buff_num < num_inter_buff_lists;
 		    buff_num++) {
-			if (status == CPA_STATUS_SUCCESS)
+			if (status == CPA_STATUS_SUCCESS) {
 				status = QAT_PHYS_CONTIG_ALLOC(
 				    &buffer_array[i][buff_num],
 				    sizeof (CpaBufferList));
+			}
 
-			if (status == CPA_STATUS_SUCCESS)
+			if (status == CPA_STATUS_SUCCESS) {
 				status = QAT_PHYS_CONTIG_ALLOC(
 				    &buffer_array[i][buff_num]->
 				    pPrivateMetaData,
 				    buff_meta_size);
+			}
 
-			if (status == CPA_STATUS_SUCCESS)
+			if (status == CPA_STATUS_SUCCESS) {
 				status = QAT_PHYS_CONTIG_ALLOC(
 				    &buffer_array[i][buff_num]->pBuffers,
 				    sizeof (CpaFlatBuffer));
+			}
 
 			if (status == CPA_STATUS_SUCCESS) {
 				/*
@@ -287,8 +286,9 @@ qat_dc_init(void)
 				status = QAT_PHYS_CONTIG_ALLOC(
 				    &buffer_array[i][buff_num]->pBuffers->
 				    pData, 2 * QAT_MAX_BUF_SIZE);
-				if (status != CPA_STATUS_SUCCESS)
+				if (status != CPA_STATUS_SUCCESS) {
 					goto fail;
+				}
 
 				buffer_array[i][buff_num]->numBuffers = 1;
 				buffer_array[i][buff_num]->pBuffers->
@@ -298,8 +298,9 @@ qat_dc_init(void)
 
 		status = cpaDcStartInstance(dc_inst_handles[i],
 		    num_inter_buff_lists, buffer_array[i]);
-		if (status != CPA_STATUS_SUCCESS)
+		if (status != CPA_STATUS_SUCCESS) {
 			goto fail;
+		}
 
 		sd.compLevel = CPA_DC_L1;
 		sd.compType = CPA_DC_DEFLATE;
@@ -310,41 +311,47 @@ qat_dc_init(void)
 		sd.checksum = CPA_DC_ADLER32;
 		status = cpaDcGetSessionSize(dc_inst_handles[i],
 		    &sd, &sess_size, &ctx_size);
-		if (status != CPA_STATUS_SUCCESS)
+		if (status != CPA_STATUS_SUCCESS) {
 			goto fail;
+		}
 
 		QAT_PHYS_CONTIG_ALLOC(&session_handles[i], sess_size);
-		if (session_handles[i] == NULL)
+		if (session_handles[i] == NULL) {
 			goto fail;
+		}
 
 		status = cpaDcInitSession(dc_inst_handles[i],
 		    session_handles[i],
 		    &sd, NULL, qat_dc_callback);
-		if (status != CPA_STATUS_SUCCESS)
+		if (status != CPA_STATUS_SUCCESS) {
 			goto fail;
+		}
 	}
 
 	qat_add_cache = kmem_cache_create("qat_add_cache", (size_t)VDO_BLOCK_SIZE, 0, 0, NULL);
-	if (!qat_add_cache)
+	if (!qat_add_cache) {
 		return (-1);
+	}
 
 	qat_dc_init_done = B_TRUE;
 	return (0);
+
 fail:
 	qat_dc_clean();
 	return (-1);
 }
 
-void
-qat_dc_fini(void)
+/**********************************************************************/
+void qat_dc_fini(void)
 {
-	if (!qat_dc_init_done)
+	if (!qat_dc_init_done) {
 		return;
+	}
 
 	qat_dc_clean();
 }
 
-
+/**********************************************************************/
 /*
  * The "add" parameter is an additional buffer which is passed
  * to QAT as a scratch buffer alongside the destination buffer
@@ -352,11 +359,10 @@ qat_dc_fini(void)
  * original source data. This is necessary to prevent QAT from
  * generating buffer overflow warnings for incompressible data.
  */
-static int
-qat_compress_impl(DataKVIO *dataKVIO, char *src, int src_len,
+static int qat_compress_impl(DataKVIO *dataKVIO, char *src, int src_len,
     char *dst, int dst_len, char *add, int add_len, size_t *c_len)
 {
-        QATCallbackTag *qat_dc_callback_tag = &dataKVIO->qatCallbackTag;
+    QATCallbackTag *qat_dc_callback_tag = &dataKVIO->qatCallbackTag;
 	
 	CpaInstanceHandle dc_inst_handle;
 	CpaDcSessionHandle session_handle;
@@ -396,19 +402,22 @@ qat_compress_impl(DataKVIO *dataKVIO, char *src, int src_len,
 	cpaDcBufferListGetMetaSize(dc_inst_handle, num_src_buf,
 	    &buffer_meta_size);
 	if (QAT_PHYS_CONTIG_ALLOC(&buffer_meta_src, buffer_meta_size) !=
-	    CPA_STATUS_SUCCESS)
+	    CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	cpaDcBufferListGetMetaSize(dc_inst_handle, num_dst_buf + num_add_buf,
 	    &buffer_meta_size);
 	if (QAT_PHYS_CONTIG_ALLOC(&buffer_meta_dst, buffer_meta_size) !=
-	    CPA_STATUS_SUCCESS)
+	    CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	/* build source buffer list */
 	if (QAT_PHYS_CONTIG_ALLOC(&buf_list_src, src_buffer_list_mem_size) !=
-	    CPA_STATUS_SUCCESS)
+	    CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 	
 	flat_buf_src = (CpaFlatBuffer *)(buf_list_src + 1);
 
@@ -416,8 +425,9 @@ qat_compress_impl(DataKVIO *dataKVIO, char *src, int src_len,
 
 	/* build destination buffer list */
 	if (QAT_PHYS_CONTIG_ALLOC(&buf_list_dst, dst_buffer_list_mem_size) !=
-	    CPA_STATUS_SUCCESS)
+	    CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	flat_buf_dst = (CpaFlatBuffer *)(buf_list_dst + 1);
 
@@ -459,8 +469,9 @@ qat_compress_impl(DataKVIO *dataKVIO, char *src, int src_len,
 
 
 	} else {
-		if (dir != QAT_DECOMPRESS)
+		if (dir != QAT_DECOMPRESS) {
 			goto fail;
+		}
 
 		buf_list_src->pBuffers->pData += ZLIB_HEAD_SZ;
 		buf_list_src->pBuffers->dataLenInBytes -= ZLIB_HEAD_SZ;
@@ -483,16 +494,13 @@ fail:
 	QAT_PHYS_CONTIG_FREE(buf_list_src);
 	QAT_PHYS_CONTIG_FREE(buf_list_dst);
 
-
-	if (dir == QAT_COMPRESS) 
-	{
+	if (dir == QAT_COMPRESS) {
 		qat_add_cache_free(add);
 		DataVIO *dataVIO = &dataKVIO->dataVIO;
 		dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
 		kvdoEnqueueDataVIOCallback(dataKVIO);
 	}
-	else
-	{
+	else {
 		ReadBlock *readBlock = &dataKVIO->readBlock;
 		readBlock->status = VDO_INVALID_FRAGMENT;
 		readBlock->callback(dataKVIO);
@@ -501,23 +509,23 @@ fail:
 	return (status);
 }
 
+/**********************************************************************/
 /*
  * Entry point for QAT accelerated compression / decompression.
  */
-int
-qat_compress(DataKVIO* dataKVIO, qat_compress_dir_t dir, char *src, int src_len,
+int qat_compress(DataKVIO* dataKVIO, qat_compress_dir_t dir, char *src, int src_len,
     char *dst, int dst_len, size_t *c_len)
 {
 	int ret;
-        size_t add_len = 0;
+    size_t add_len = 0;
 	
 	QATCallbackTag *tag = &dataKVIO->qatCallbackTag;
 	
 	tag->dir = dir;
-        if (dir == QAT_COMPRESS) {
+    if (dir == QAT_COMPRESS) {
 		tag->add = qat_add_cache_alloc();
 		add_len = VDO_BLOCK_SIZE;
-        }
+    }
 
 	ret = qat_compress_impl(dataKVIO, src, src_len, dst,
 	    dst_len, tag->add, add_len, c_len);

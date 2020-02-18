@@ -23,8 +23,8 @@
 #include "statusCodes.h"
 #include <linux/slab.h>
 
-CpaStatus
-qat_mem_alloc_contig(void **pp_mem_addr, Cpa32U size_bytes)
+/**********************************************************************/
+CpaStatus qat_mem_alloc_contig(void **pp_mem_addr, Cpa32U size_bytes)
 {
 	*pp_mem_addr = kmalloc(size_bytes, GFP_KERNEL);
 	if (*pp_mem_addr == NULL)
@@ -32,8 +32,8 @@ qat_mem_alloc_contig(void **pp_mem_addr, Cpa32U size_bytes)
 	return (CPA_STATUS_SUCCESS);
 }
 
-void
-qat_mem_free_contig(void **pp_mem_addr)
+/**********************************************************************/
+void qat_mem_free_contig(void **pp_mem_addr)
 {
 	if (*pp_mem_addr != NULL) {
 		kfree(*pp_mem_addr);
@@ -41,8 +41,8 @@ qat_mem_free_contig(void **pp_mem_addr)
 	}
 }
 
-int
-qat_init(void)
+/**********************************************************************/
+int qat_init(void)
 {
 	int ret;
 
@@ -53,8 +53,8 @@ qat_init(void)
 	return VDO_SUCCESS;
 }
 
-void
-qat_fini(void)
+/**********************************************************************/
+void qat_fini(void)
 {
 	qat_dc_fini();
 }

@@ -530,7 +530,6 @@ void kvdoCopyDataVIO(DataVIO *source, DataVIO *destination)
 }
 
 /**********************************************************************/
-
 static void kvdoCompressWorkWithQAT(KvdoWorkItem *item)
 {
   DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
@@ -544,11 +543,11 @@ static void kvdoCompressWorkWithQAT(KvdoWorkItem *item)
                		    dataKVIO->scratchBlock,
                		    (size_t)VDO_BLOCK_SIZE,
                		    &destLen);
-  if (status != CPA_STATUS_SUCCESS)
-  {  
-	DataVIO *dataVIO = &dataKVIO->dataVIO;
-	dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
-	kvdoEnqueueDataVIOCallback(dataKVIO);
+
+  if (status != CPA_STATUS_SUCCESS) {  
+	  DataVIO *dataVIO = &dataKVIO->dataVIO;
+	  dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
+	  kvdoEnqueueDataVIOCallback(dataKVIO);
   }
 }
 
