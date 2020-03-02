@@ -224,8 +224,8 @@ struct dataVIO {
   /* All of the fields necessary for the compression path */
   CompressionState     compression;
 
-  /* Whether the compress policy is with QAT */
-  bool                 isCompressWithQAT;
+  /* the compress policy/algorithm */
+  CompressPolicy       compressPolicy;
 };
 
 /**

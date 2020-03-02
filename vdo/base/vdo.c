@@ -954,6 +954,8 @@ const char *getCompressPolicyString(const VDO *vdo)
 {
   if (vdo->loadConfig.compressPolicy == COMPRESS_POLICY_QAT) {
     return "QAT";
+  } else if (vdo->loadConfig.compressPolicy == COMPRESS_POLICY_ZLIB) {
+    return "ZLIB";
   } else if (vdo->loadConfig.compressPolicy == COMPRESS_POLICY_LZ4) {
     return "LZ4";
   } else {

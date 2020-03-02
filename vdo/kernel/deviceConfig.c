@@ -651,6 +651,8 @@ int parseDeviceConfig(int                argc,
   // Get the compress policy and validate.
   if (strcmp(argSet.argv[0], "QAT") == 0) {
     config->compressPolicy = COMPRESS_POLICY_QAT;
+  } else if (strcmp(argSet.argv[0], "ZLIB") == 0) {
+    config->compressPolicy = COMPRESS_POLICY_ZLIB;
   } else if (strcmp(argSet.argv[0], "LZ4") == 0) {
     config->compressPolicy = COMPRESS_POLICY_LZ4;
   } else {
@@ -752,6 +754,8 @@ const char *getConfigCompressPolicyString(DeviceConfig *config)
 {
   if (config->compressPolicy == COMPRESS_POLICY_QAT) {
     return "QAT";
+  } else if (config->compressPolicy == COMPRESS_POLICY_ZLIB) {
+    return "ZLIB";
   } else if (config->compressPolicy == COMPRESS_POLICY_LZ4) {
     return "LZ4";
   } else {

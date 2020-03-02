@@ -30,6 +30,7 @@
 #include "compressedBlock.h"
 #include "hashLock.h"
 #include "lz4.h"
+#include "zlib.h"
 #include "qat.h"
 
 #include "bio.h"
@@ -349,7 +350,44 @@ static void uncompressReadBlock(KvdoWorkItem *workItem)
 
 /**
  * Uncompress the data that's just been read and then call back the requesting
- * DataKVIO.
+ * DataKVIO with zlib.
+ *
+ * @param workItem  The DataKVIO requesting the data
+ **/
+static void uncompressReadBlockWithZlib(KvdoWorkItem *workItem)
+{
+  DataKVIO  *dataKVIO  = workItemAsDataKVIO(workItem);
+  ReadBlock *readBlock = &dataKVIO->readBlock;
+  size_t blockSize = VDO_BLOCK_SIZE;
+
+  uint16_t fragmentOffset, fragmentSize;
+  char *compressedData = readBlock->data;
+  int result = getCompressedBlockFragment(readBlock->mappingState,
+                                          compressedData, blockSize,
+                                          &fragmentOffset,
+                                          &fragmentSize);
+  if (result != VDO_SUCCESS) {
+    logDebug("%s: frag err %d", __func__, result);
+    readBlock->status = result;
+    readBlock->callback(dataKVIO);
+    return;
+  }
+
+  char *fragment = compressedData + fragmentOffset;
+  int zlibCompressStatus = zlib_uncompress(dataKVIO->scratchBlock, &blockSize, fragment, (size_t)fragmentSize);
+  if (zlibCompressStatus == Z_OK) {
+    readBlock->data = dataKVIO->scratchBlock;
+  } else {
+    logDebug("%s: zlib error", __func__);
+    readBlock->status = VDO_INVALID_FRAGMENT;
+  }
+
+  readBlock->callback(dataKVIO);
+}
+
+/**
+ * Uncompress the data that's just been read and then call back the requesting
+ * DataKVIO with QAT.
  *
  * @param workItem  The DataKVIO requesting the data
  **/
@@ -398,8 +436,11 @@ static void completeRead(DataKVIO *dataKVIO, int result)
     // launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,
     //                         CPU_Q_ACTION_COMPRESS_BLOCK);
 
-    if (dataKVIO->dataVIO.isCompressWithQAT) {
+    if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_QAT) {
       launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,   
+                          CPU_Q_ACTION_COMPRESS_BLOCK);
+    } else if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_ZLIB) {
+      launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithZlib, NULL,   
                           CPU_Q_ACTION_COMPRESS_BLOCK);
     } else {
       launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlock, NULL,
@@ -611,6 +652,28 @@ static void kvdoCompressWork(KvdoWorkItem *item)
 }
 
 /**********************************************************************/
+static void kvdoCompressWorkWithZlib(KvdoWorkItem *item)
+{
+  DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
+  dataKVIOAddTraceRecord(dataKVIO, THIS_LOCATION(NULL));
+
+  size_t destLen = (size_t)VDO_BLOCK_SIZE;
+  int zlibCompressStatus = zlib_compress_level(dataKVIO->scratchBlock, &destLen, dataKVIO->dataBlock, (size_t)VDO_BLOCK_SIZE, Z_DEFAULT_COMPRESSION);
+  DataVIO *dataVIO = &dataKVIO->dataVIO;
+  if (zlibCompressStatus == Z_OK) {
+    // The scratch block will be used to contain the compressed data.
+    dataVIO->compression.data = dataKVIO->scratchBlock;
+    dataVIO->compression.size = destLen;
+  } else {
+    // Use block size plus one as an indicator for uncompressible data.
+    printk(KERN_INFO "zlib status is %d!\n", zlibCompressStatus);
+    dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
+  }
+
+  kvdoEnqueueDataVIOCallback(dataKVIO);
+}
+
+/**********************************************************************/
 static void kvdoCompressWorkWithQAT(KvdoWorkItem *item)
 {
   DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
@@ -655,8 +718,11 @@ void kvdoCompressDataVIO(DataVIO *dataVIO)
   // launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
   //                         CPU_Q_ACTION_COMPRESS_BLOCK);
 
-  if (dataKVIO->dataVIO.isCompressWithQAT) {
+  if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_QAT) {
     launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithQAT, NULL,   
+                          CPU_Q_ACTION_COMPRESS_BLOCK);
+  } else if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_ZLIB) {
+    launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithZlib, NULL,   
                           CPU_Q_ACTION_COMPRESS_BLOCK);
   } else {
     launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,

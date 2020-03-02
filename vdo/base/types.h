@@ -271,6 +271,7 @@ typedef enum {
  **/ 
 typedef enum {
   COMPRESS_POLICY_LZ4,
+  COMPRESS_POLICY_ZLIB,
   COMPRESS_POLICY_QAT,
 } CompressPolicy;
 

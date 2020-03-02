@@ -717,9 +717,7 @@ void compressData(DataVIO *dataVIO)
     return;
   }
 
-  if (isCompressWithQAT(dataVIO)) {
-    dataVIO->isCompressWithQAT = true;
-  }
+  dataVIO->compressPolicy = getCompressPolicy(getVDOFromDataVIO(dataVIO));
 
   dataVIO->lastAsyncOperation = COMPRESS_DATA;
   setPackerCallback(dataVIO, packCompressedData, THIS_LOCATION("$F;cb=pack"));
@@ -798,7 +796,6 @@ void shareBlock(VDOCompletion *completion)
   }
 
   if (!dataVIO->isDuplicate) {
-    dataVIO->isCompressWithQAT = false;
     compressData(dataVIO);
     return;
   }
@@ -831,7 +828,6 @@ static void lockHashInZone(VDOCompletion *completion)
   }
 
   if (dataVIO->hashLock == NULL) {
-    dataVIO->isCompressWithQAT = false;
     // It's extremely unlikely, but in the case of a hash collision, the
     // DataVIO will not obtain a reference to the lock and cannot deduplicate.
     compressData(dataVIO);
