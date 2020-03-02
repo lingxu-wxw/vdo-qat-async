@@ -530,6 +530,38 @@ void kvdoCopyDataVIO(DataVIO *source, DataVIO *destination)
 }
 
 /**********************************************************************/
+static void kvdoCompressWork(KvdoWorkItem *item)
+{
+  DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
+  KernelLayer *layer    = getLayerFromDataKVIO(dataKVIO);
+  dataKVIOAddTraceRecord(dataKVIO, THIS_LOCATION(NULL));
+
+  char *context = getWorkQueuePrivateData();
+  if (unlikely(context == NULL)) {
+    uint32_t index = atomicAdd32(&layer->compressionContextIndex, 1) - 1;
+    BUG_ON(index >= layer->deviceConfig->threadCounts.cpuThreads);
+    context = layer->compressionContext[index];
+    setWorkQueuePrivateData(context);
+  }
+
+  int size = LZ4_compress_ctx_limitedOutput(context, dataKVIO->dataBlock,
+                                            dataKVIO->scratchBlock,
+                                            VDO_BLOCK_SIZE,
+                                            VDO_BLOCK_SIZE);
+  DataVIO *dataVIO = &dataKVIO->dataVIO;
+  if (size > 0) {
+    // The scratch block will be used to contain the compressed data.
+    dataVIO->compression.data = dataKVIO->scratchBlock;
+    dataVIO->compression.size = size;
+  } else {
+    // Use block size plus one as an indicator for uncompressible data.
+    dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
+  }
+
+  kvdoEnqueueDataVIOCallback(dataKVIO);
+}
+
+/**********************************************************************/
 static void kvdoCompressWorkWithQAT(KvdoWorkItem *item)
 {
   DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
