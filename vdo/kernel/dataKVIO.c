@@ -313,7 +313,46 @@ static void resetUserBio(BIO *bio, int error)
  *
  * @param workItem  The DataKVIO requesting the data
  **/
+static void uncompressReadBlock(KvdoWorkItem *workItem)
+{
+  DataKVIO  *dataKVIO  = workItemAsDataKVIO(workItem);
+  ReadBlock *readBlock = &dataKVIO->readBlock;
+  BlockSize  blockSize = VDO_BLOCK_SIZE;
 
+  // The DataKVIO's scratch block will be used to contain the
+  // uncompressed data.
+  uint16_t fragmentOffset, fragmentSize;
+  char *compressedData = readBlock->data;
+  int result = getCompressedBlockFragment(readBlock->mappingState,
+                                          compressedData, blockSize,
+                                          &fragmentOffset,
+                                          &fragmentSize);
+  if (result != VDO_SUCCESS) {
+    logDebug("%s: frag err %d", __func__, result);
+    readBlock->status = result;
+    readBlock->callback(dataKVIO);
+    return;
+  }
+
+  char *fragment = compressedData + fragmentOffset;
+  int size = LZ4_uncompress_unknownOutputSize(fragment, dataKVIO->scratchBlock,
+                                              fragmentSize, blockSize);
+  if (size == blockSize) {
+    readBlock->data = dataKVIO->scratchBlock;
+  } else {
+    logDebug("%s: lz4 error", __func__);
+    readBlock->status = VDO_INVALID_FRAGMENT;
+  }
+
+  readBlock->callback(dataKVIO);
+}
+
+/**
+ * Uncompress the data that's just been read and then call back the requesting
+ * DataKVIO.
+ *
+ * @param workItem  The DataKVIO requesting the data
+ **/
 static void uncompressReadBlockWithQAT(KvdoWorkItem *workItem)
 {
   DataKVIO  *dataKVIO  = workItemAsDataKVIO(workItem);
@@ -355,8 +394,18 @@ static void completeRead(DataKVIO *dataKVIO, int result)
   readBlock->status = result;
 
   if ((result == VDO_SUCCESS) && isCompressed(readBlock->mappingState)) {
-    launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,
-                             CPU_Q_ACTION_COMPRESS_BLOCK);
+
+    // launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,
+    //                         CPU_Q_ACTION_COMPRESS_BLOCK);
+
+    if (dataKVIO->dataVIO.isCompressWithQAT) {
+      launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,   
+                          CPU_Q_ACTION_COMPRESS_BLOCK);
+    } else {
+      launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlock, NULL,
+                          CPU_Q_ACTION_COMPRESS_BLOCK);
+    }
+    
     return;
   }
 
