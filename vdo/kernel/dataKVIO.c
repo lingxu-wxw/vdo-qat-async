@@ -571,11 +571,16 @@ void kvdoCompressDataVIO(DataVIO *dataVIO)
     return;
   }
 
-  CompressPolicy compressPolicy = dataKVIO->kvio.vio.vdo.loadingConfig.compressPolicy;
-
   // launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
   //                         CPU_Q_ACTION_COMPRESS_BLOCK);
-  launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithQAT, NULL, CPU_Q_ACTION_COMPRESS_BLOCK);
+
+  if (dataKVIO->dataVIO.isCompressWithQAT) {
+    launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithQAT, NULL,   
+                          CPU_Q_ACTION_COMPRESS_BLOCK);
+  } else {
+    launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
+                          CPU_Q_ACTION_COMPRESS_BLOCK);
+  }
 }
 
 /**
