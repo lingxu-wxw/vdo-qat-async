@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "hashlock.h": "c",
-        "lz4.h": "c"
+        "lz4.h": "c",
+        "constants.h": "c"
     }
 }
