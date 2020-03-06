@@ -996,12 +996,32 @@ int kvdoLaunchDataKVIOFromBio(KernelLayer *layer,
   return VDO_SUCCESS;
 }
 
+/**********************************************************************/
 /**
  * Hash a DataKVIO and set its chunk name.
  *
  * @param item  The DataKVIO to be hashed
  **/
 static void kvdoHashDataWork(KvdoWorkItem *item)
+{
+  DataKVIO *dataKVIO = workItemAsDataKVIO(item);
+  DataVIO  *dataVIO  = &dataKVIO->dataVIO;
+  dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
+
+  MurmurHash3_x64_128(dataKVIO->dataBlock, VDO_BLOCK_SIZE, 0x62ea60be,
+                      &dataVIO->chunkName);
+  dataKVIO->dedupeContext.chunkName = &dataVIO->chunkName;
+
+  kvdoEnqueueDataVIOCallback(dataKVIO);
+}
+
+/**********************************************************************/
+/**
+ * Hash a DataKVIO and set its chunk name.
+ *
+ * @param item  The DataKVIO to be hashed
+ **/
+static void kvdoHashDataWorkwithQAT(KvdoWorkItem *item)
 {
   DataKVIO *dataKVIO = workItemAsDataKVIO(item);
   DataVIO  *dataVIO  = &dataKVIO->dataVIO;
