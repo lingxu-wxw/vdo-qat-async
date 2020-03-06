@@ -47,8 +47,14 @@ int qat_init(void)
 	int ret;
 
 	ret = qat_dc_init();
-	if (ret != 0)
+	if (ret != 0) {
 		return (ret);
+	}
+
+	ret = qat_cy_init();
+	if (ret != 0) {
+		return (ret);
+	}
 
 	return VDO_SUCCESS;
 }
@@ -57,4 +63,5 @@ int qat_init(void)
 void qat_fini(void)
 {
 	qat_dc_fini();
+	qat_cy_fini();
 }

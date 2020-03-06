@@ -224,6 +224,10 @@ int qat_dc_init(void)
 	Cpa32U buff_meta_size = 0;
 	CpaDcSessionSetupData sd = {0};
 
+	// if (qat_dc_init_done) {
+	// 	return (0);
+	// }
+
 	status = cpaDcGetNumInstances(&num_inst);
 	if (status != CPA_STATUS_SUCCESS) {
 		return (-1);
@@ -324,6 +328,7 @@ int qat_dc_init(void)
 			goto fail;
 		}
 
+		/* invoke qat_dc_callback */
 		status = cpaDcInitSession(dc_inst_handles[i],
 		    session_handles[i],
 		    &sd, NULL, qat_dc_callback);

@@ -69,6 +69,9 @@ void qat_mem_free_contig(void **pp_mem_addr);
 extern int qat_dc_init(void);
 extern void qat_dc_fini(void);
 
+extern int qat_cy_init(void);
+extern void qat_cy_fini(void);
+
 extern int qat_init(void);
 extern void qat_fini(void);
 
@@ -76,8 +79,15 @@ extern void qat_fini(void);
 #define	CPA_STATUS_INCOMPRESSIBLE				(-127)
 
 extern boolean_t qat_dc_use_accel(size_t s_len);
+extern boolean_t qat_crypt_use_accel(size_t s_len);
+extern boolean_t qat_checksum_use_accel(size_t s_len);
 
 extern int qat_compress(DataKVIO *dataKVIO, qat_compress_dir_t dir, char *src, int src_len,
     char *dst, int dst_len, size_t *c_len);
+extern int qat_crypt(qat_encrypt_dir_t dir, uint8_t *src_buf, uint8_t *dst_buf,
+    uint8_t *aad_buf, uint32_t aad_len, uint8_t *iv_buf, uint8_t *digest_buf,
+    crypto_key_t *key, uint64_t crypt, uint32_t enc_len);
+extern int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size,
+    zio_cksum_t *zcp);
 
 #endif /* _SYS_QAT_H */

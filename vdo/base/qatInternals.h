@@ -9,6 +9,11 @@ typedef enum qat_compress_dir {
 	QAT_COMPRESS = 1,
 } qat_compress_dir_t;
 
+typedef enum qat_encrypt_dir {
+	QAT_DECRYPT = 0,
+	QAT_ENCRYPT = 1,
+} qat_encrypt_dir_t;
+
 typedef enum {
 	B_FALSE = 0,
 	B_TRUE = 1,

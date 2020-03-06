@@ -1021,17 +1021,17 @@ static void kvdoHashDataWork(KvdoWorkItem *item)
  *
  * @param item  The DataKVIO to be hashed
  **/
-static void kvdoHashDataWorkwithQAT(KvdoWorkItem *item)
+static void kvdoHashDataWorkWithQAT(KvdoWorkItem *item)
 {
-  DataKVIO *dataKVIO = workItemAsDataKVIO(item);
-  DataVIO  *dataVIO  = &dataKVIO->dataVIO;
-  dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
+  // DataKVIO *dataKVIO = workItemAsDataKVIO(item);
+  // DataVIO  *dataVIO  = &dataKVIO->dataVIO;
+  // dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
 
-  MurmurHash3_x64_128(dataKVIO->dataBlock, VDO_BLOCK_SIZE, 0x62ea60be,
-                      &dataVIO->chunkName);
-  dataKVIO->dedupeContext.chunkName = &dataVIO->chunkName;
+  // MurmurHash3_x64_128(dataKVIO->dataBlock, VDO_BLOCK_SIZE, 0x62ea60be,
+  //                     &dataVIO->chunkName);
+  // dataKVIO->dedupeContext.chunkName = &dataVIO->chunkName;
 
-  kvdoEnqueueDataVIOCallback(dataKVIO);
+  // kvdoEnqueueDataVIOCallback(dataKVIO);
 }
 
 /**********************************************************************/
@@ -1040,6 +1040,9 @@ void kvdoHashDataVIO(DataVIO *dataVIO)
   dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
   launchDataKVIOOnCPUQueue(dataVIOAsDataKVIO(dataVIO), kvdoHashDataWork, NULL,
                            CPU_Q_ACTION_HASH_BLOCK);
+
+  // launchDataKVIOOnCPUQueue(dataVIOAsDataKVIO(dataVIO), kvdoHashDataWorkWithQAT, NULL,
+  //                          CPU_Q_ACTION_HASH_BLOCK);
 }
 
 /**********************************************************************/
