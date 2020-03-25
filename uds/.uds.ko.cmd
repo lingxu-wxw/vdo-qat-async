@@ -1,0 +1,1 @@
+cmd_/home/hlguo/testspace/vdo-qat-async/uds/uds.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/hlguo/testspace/vdo-qat-async/uds/uds.ko /home/hlguo/testspace/vdo-qat-async/uds/uds.o /home/hlguo/testspace/vdo-qat-async/uds/uds.mod.o

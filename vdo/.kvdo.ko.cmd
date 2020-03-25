@@ -1,0 +1,1 @@
+cmd_/home/hlguo/testspace/vdo-qat-async/vdo/kvdo.ko := ld -r -m elf_x86_64 -T ./scripts/module-common.lds --build-id  -o /home/hlguo/testspace/vdo-qat-async/vdo/kvdo.ko /home/hlguo/testspace/vdo-qat-async/vdo/kvdo.o /home/hlguo/testspace/vdo-qat-async/vdo/kvdo.mod.o
