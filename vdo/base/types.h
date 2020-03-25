@@ -266,15 +266,6 @@ typedef enum {
                         ///< underlying device
 } WritePolicy;
 
-/**
- * The possible compress algorithm.
- **/ 
-typedef enum {
-  COMPRESS_POLICY_LZ4,
-  COMPRESS_POLICY_ZLIB,
-  COMPRESS_POLICY_QAT,
-} CompressPolicy;
-
 typedef enum {
   ZONE_TYPE_JOURNAL,
   ZONE_TYPE_LOGICAL,
@@ -364,8 +355,6 @@ typedef struct vdoLoadConfig {
   PageCount             cacheSize;
   /** whether writes are synchronous */
   WritePolicy           writePolicy;
-  /** the algorithm used for compression */
-  CompressPolicy        compressPolicy;
   /** the maximum age of a dirty block map page in recovery journal blocks */
   BlockCount            maximumAge;
 } VDOLoadConfig;

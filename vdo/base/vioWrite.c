@@ -240,18 +240,6 @@ static inline bool isAsync(DataVIO *dataVIO)
 }
 
 /**
- * Check whether we are in QAT compress policy.
- *
- * @param dataVIO  A DataVIO containing a pointer to the VDO whose write
- *                 policy we want to check
- *
- * @return <code>true</code> if we are in QAT compress policy
- **/
-static inline bool isCompressWithQAT(DataVIO *dataVIO) {
-  return (getCompressPolicy(getVDOFromDataVIO(dataVIO)) == COMPRESS_POLICY_QAT);
-}
-
-/**
  * Release the PBN lock and/or the reference on the allocated block at the
  * end of processing a DataVIO.
  *
@@ -716,8 +704,6 @@ void compressData(DataVIO *dataVIO)
     abortDeduplication(dataVIO);
     return;
   }
-
-  dataVIO->compressPolicy = getCompressPolicy(getVDOFromDataVIO(dataVIO));
 
   dataVIO->lastAsyncOperation = COMPRESS_DATA;
   setPackerCallback(dataVIO, packCompressedData, THIS_LOCATION("$F;cb=pack"));

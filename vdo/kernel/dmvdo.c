@@ -596,16 +596,14 @@ static int vdoInitialize(struct dm_target *ti,
   logDebug("MD RAID5 mode          = %s", (config->mdRaid5ModeEnabled
                                            ? "on" : "off"));
   logDebug("Write policy           = %s", getConfigWritePolicyString(config));
-  logDebug("Compress policy        = %s", getConfigCompressPolicyString(config));
 
   // The threadConfig will be copied by the VDO if it's successfully
   // created.
   VDOLoadConfig loadConfig = {
-    .cacheSize      = config->cacheSize,
-    .threadConfig   = NULL,
-    .writePolicy    = config->writePolicy,
-    .compressPolicy = config->compressPolicy,
-    .maximumAge     = config->blockMapMaximumAge,
+    .cacheSize    = config->cacheSize,
+    .threadConfig = NULL,
+    .writePolicy  = config->writePolicy,
+    .maximumAge   = config->blockMapMaximumAge,
   };
 
   char        *failureReason;

@@ -648,19 +648,6 @@ int parseDeviceConfig(int                argc,
   }
   dm_shift_arg(&argSet);
 
-  // Get the compress policy and validate.
-  if (strcmp(argSet.argv[0], "QAT") == 0) {
-    config->compressPolicy = COMPRESS_POLICY_QAT;
-  } else if (strcmp(argSet.argv[0], "ZLIB") == 0) {
-    config->compressPolicy = COMPRESS_POLICY_ZLIB;
-  } else if (strcmp(argSet.argv[0], "LZ4") == 0) {
-    config->compressPolicy = COMPRESS_POLICY_LZ4;
-  } else {
-    handleParseError(&config, errorPtr, "Invalid compress policy");
-    return VDO_BAD_CONFIGURATION;
-  }
-  dm_shift_arg(&argSet);
-
   // Make sure the enum to get the pool name from argv directly is still in
   // sync with the parsing of the table line.
   if (&argSet.argv[0] != &argv[POOL_NAME_ARG_INDEX[config->version]]) {
@@ -750,15 +737,4 @@ const char *getConfigWritePolicyString(DeviceConfig *config)
   return ((config->writePolicy == WRITE_POLICY_ASYNC) ? "async" : "sync");
 }
 
-const char *getConfigCompressPolicyString(DeviceConfig *config)
-{
-  if (config->compressPolicy == COMPRESS_POLICY_QAT) {
-    return "QAT";
-  } else if (config->compressPolicy == COMPRESS_POLICY_ZLIB) {
-    return "ZLIB";
-  } else if (config->compressPolicy == COMPRESS_POLICY_LZ4) {
-    return "LZ4";
-  } else {
-    return "LZ4";
-  }
-}
+

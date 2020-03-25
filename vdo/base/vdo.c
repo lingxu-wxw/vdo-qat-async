@@ -866,11 +866,8 @@ void getVDOStatistics(const VDO *vdo, VDOStatistics *stats)
   stats->completeRecoveries = vdo->completeRecoveries;
   stats->readOnlyRecoveries = vdo->readOnlyRecoveries;
   stats->blockMapCacheSize  = getBlockMapCacheSize(vdo);
-
   snprintf(stats->writePolicy, sizeof(stats->writePolicy), "%s",
            ((getWritePolicy(vdo) == WRITE_POLICY_ASYNC) ? "async" : "sync"));
-  snprintf(stats->compressPolicy, sizeof(stats->compressPolicy), "%s",
-           getCompressPolicyString(vdo));
 
   // The callees are responsible for thread-safety.
   stats->dataBlocksUsed     = getPhysicalBlocksAllocated(vdo);
@@ -935,32 +932,6 @@ WritePolicy getWritePolicy(const VDO *vdo)
 void setWritePolicy(VDO *vdo, WritePolicy new)
 {
   vdo->loadConfig.writePolicy = new;
-}
-
-/**********************************************************************/
-CompressPolicy getCompressPolicy(const VDO *vdo)
-{
-  return vdo->loadConfig.compressPolicy;
-}
-
-/**********************************************************************/
-void setCompressPolicy(VDO *vdo, CompressPolicy new)
-{
-  vdo->loadConfig.compressPolicy = new;
-}
-
-/**********************************************************************/
-const char *getCompressPolicyString(const VDO *vdo)
-{
-  if (vdo->loadConfig.compressPolicy == COMPRESS_POLICY_QAT) {
-    return "QAT";
-  } else if (vdo->loadConfig.compressPolicy == COMPRESS_POLICY_ZLIB) {
-    return "ZLIB";
-  } else if (vdo->loadConfig.compressPolicy == COMPRESS_POLICY_LZ4) {
-    return "LZ4";
-  } else {
-    return "LZ4";
-  }
 }
 
 /**********************************************************************/

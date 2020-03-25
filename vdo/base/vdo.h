@@ -145,33 +145,6 @@ WritePolicy getWritePolicy(const VDO *vdo);
 void setWritePolicy(VDO *vdo, WritePolicy new);
 
 /**
- * Get the VDO compress policy.
- *
- * @param vdo  The VDO
- *
- * @return The compress policy
- **/
-CompressPolicy getCompressPolicy(const VDO *vdo);
-
-/**
- * Set the VDO compress policy.
- *
- * @param vdo  The VDO
- * @param new  The new compress policy
- **/
-void setCompressPolicy(VDO *vdo, CompressPolicy new);
-
-/**
- * Get the text describing the compress policy.
- *
- * @param config  The device config
- *
- * @returns a pointer to a string describing the compress policy
- **/
-const char *getCompressPolicyString(const VDO *vdo)
-  __attribute__((warn_unused_result));
-
-/**
  * Get a copy of the load-time configuration of the VDO.
  *
  * @param vdo  The VDO

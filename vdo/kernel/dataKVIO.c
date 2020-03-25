@@ -30,7 +30,6 @@
 #include "compressedBlock.h"
 #include "hashLock.h"
 #include "lz4.h"
-#include "zlib.h"
 #include "qat.h"
 
 #include "bio.h"
@@ -314,83 +313,7 @@ static void resetUserBio(BIO *bio, int error)
  *
  * @param workItem  The DataKVIO requesting the data
  **/
-static void uncompressReadBlock(KvdoWorkItem *workItem)
-{
-  DataKVIO  *dataKVIO  = workItemAsDataKVIO(workItem);
-  ReadBlock *readBlock = &dataKVIO->readBlock;
-  BlockSize  blockSize = VDO_BLOCK_SIZE;
 
-  // The DataKVIO's scratch block will be used to contain the
-  // uncompressed data.
-  uint16_t fragmentOffset, fragmentSize;
-  char *compressedData = readBlock->data;
-  int result = getCompressedBlockFragment(readBlock->mappingState,
-                                          compressedData, blockSize,
-                                          &fragmentOffset,
-                                          &fragmentSize);
-  if (result != VDO_SUCCESS) {
-    logDebug("%s: frag err %d", __func__, result);
-    readBlock->status = result;
-    readBlock->callback(dataKVIO);
-    return;
-  }
-
-  char *fragment = compressedData + fragmentOffset;
-  int size = LZ4_uncompress_unknownOutputSize(fragment, dataKVIO->scratchBlock,
-                                              fragmentSize, blockSize);
-  if (size == blockSize) {
-    readBlock->data = dataKVIO->scratchBlock;
-  } else {
-    logDebug("%s: lz4 error", __func__);
-    readBlock->status = VDO_INVALID_FRAGMENT;
-  }
-
-  readBlock->callback(dataKVIO);
-}
-
-/**
- * Uncompress the data that's just been read and then call back the requesting
- * DataKVIO with zlib.
- *
- * @param workItem  The DataKVIO requesting the data
- **/
-static void uncompressReadBlockWithZlib(KvdoWorkItem *workItem)
-{
-  DataKVIO  *dataKVIO  = workItemAsDataKVIO(workItem);
-  ReadBlock *readBlock = &dataKVIO->readBlock;
-  size_t blockSize = VDO_BLOCK_SIZE;
-
-  uint16_t fragmentOffset, fragmentSize;
-  char *compressedData = readBlock->data;
-  int result = getCompressedBlockFragment(readBlock->mappingState,
-                                          compressedData, blockSize,
-                                          &fragmentOffset,
-                                          &fragmentSize);
-  if (result != VDO_SUCCESS) {
-    logDebug("%s: frag err %d", __func__, result);
-    readBlock->status = result;
-    readBlock->callback(dataKVIO);
-    return;
-  }
-
-  char *fragment = compressedData + fragmentOffset;
-  int zlibCompressStatus = zlib_uncompress(dataKVIO->scratchBlock, &blockSize, fragment, (size_t)fragmentSize);
-  if (zlibCompressStatus == Z_OK) {
-    readBlock->data = dataKVIO->scratchBlock;
-  } else {
-    logDebug("%s: zlib error", __func__);
-    readBlock->status = VDO_INVALID_FRAGMENT;
-  }
-
-  readBlock->callback(dataKVIO);
-}
-
-/**
- * Uncompress the data that's just been read and then call back the requesting
- * DataKVIO with QAT.
- *
- * @param workItem  The DataKVIO requesting the data
- **/
 static void uncompressReadBlockWithQAT(KvdoWorkItem *workItem)
 {
   DataKVIO  *dataKVIO  = workItemAsDataKVIO(workItem);
@@ -432,21 +355,8 @@ static void completeRead(DataKVIO *dataKVIO, int result)
   readBlock->status = result;
 
   if ((result == VDO_SUCCESS) && isCompressed(readBlock->mappingState)) {
-
-    // launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,
-    //                         CPU_Q_ACTION_COMPRESS_BLOCK);
-
-    if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_QAT) {
-      launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,   
-                          CPU_Q_ACTION_COMPRESS_BLOCK);
-    } else if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_ZLIB) {
-      launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithZlib, NULL,   
-                          CPU_Q_ACTION_COMPRESS_BLOCK);
-    } else {
-      launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlock, NULL,
-                          CPU_Q_ACTION_COMPRESS_BLOCK);
-    }
-    
+    launchDataKVIOOnCPUQueue(dataKVIO, uncompressReadBlockWithQAT, NULL,
+                             CPU_Q_ACTION_COMPRESS_BLOCK);
     return;
   }
 
@@ -620,60 +530,7 @@ void kvdoCopyDataVIO(DataVIO *source, DataVIO *destination)
 }
 
 /**********************************************************************/
-static void kvdoCompressWork(KvdoWorkItem *item)
-{
-  DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
-  KernelLayer *layer    = getLayerFromDataKVIO(dataKVIO);
-  dataKVIOAddTraceRecord(dataKVIO, THIS_LOCATION(NULL));
 
-  char *context = getWorkQueuePrivateData();
-  if (unlikely(context == NULL)) {
-    uint32_t index = atomicAdd32(&layer->compressionContextIndex, 1) - 1;
-    BUG_ON(index >= layer->deviceConfig->threadCounts.cpuThreads);
-    context = layer->compressionContext[index];
-    setWorkQueuePrivateData(context);
-  }
-
-  int size = LZ4_compress_ctx_limitedOutput(context, dataKVIO->dataBlock,
-                                            dataKVIO->scratchBlock,
-                                            VDO_BLOCK_SIZE,
-                                            VDO_BLOCK_SIZE);
-  DataVIO *dataVIO = &dataKVIO->dataVIO;
-  if (size > 0) {
-    // The scratch block will be used to contain the compressed data.
-    dataVIO->compression.data = dataKVIO->scratchBlock;
-    dataVIO->compression.size = size;
-  } else {
-    // Use block size plus one as an indicator for uncompressible data.
-    dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
-  }
-
-  kvdoEnqueueDataVIOCallback(dataKVIO);
-}
-
-/**********************************************************************/
-static void kvdoCompressWorkWithZlib(KvdoWorkItem *item)
-{
-  DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
-  dataKVIOAddTraceRecord(dataKVIO, THIS_LOCATION(NULL));
-
-  size_t destLen = (size_t)VDO_BLOCK_SIZE;
-  int zlibCompressStatus = zlib_compress_level(dataKVIO->scratchBlock, &destLen, dataKVIO->dataBlock, (size_t)VDO_BLOCK_SIZE, Z_DEFAULT_COMPRESSION);
-  DataVIO *dataVIO = &dataKVIO->dataVIO;
-  if (zlibCompressStatus == Z_OK) {
-    // The scratch block will be used to contain the compressed data.
-    dataVIO->compression.data = dataKVIO->scratchBlock;
-    dataVIO->compression.size = destLen;
-  } else {
-    // Use block size plus one as an indicator for uncompressible data.
-    printk(KERN_INFO "zlib status is %d!\n", zlibCompressStatus);
-    dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
-  }
-
-  kvdoEnqueueDataVIOCallback(dataKVIO);
-}
-
-/**********************************************************************/
 static void kvdoCompressWorkWithQAT(KvdoWorkItem *item)
 {
   DataKVIO    *dataKVIO = workItemAsDataKVIO(item);
@@ -687,11 +544,11 @@ static void kvdoCompressWorkWithQAT(KvdoWorkItem *item)
                		    dataKVIO->scratchBlock,
                		    (size_t)VDO_BLOCK_SIZE,
                		    &destLen);
-
-  if (status != CPA_STATUS_SUCCESS) {  
-	  DataVIO *dataVIO = &dataKVIO->dataVIO;
-	  dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
-	  kvdoEnqueueDataVIOCallback(dataKVIO);
+  if (status != CPA_STATUS_SUCCESS)
+  {  
+	DataVIO *dataVIO = &dataKVIO->dataVIO;
+	dataVIO->compression.size = VDO_BLOCK_SIZE + 1;
+	kvdoEnqueueDataVIOCallback(dataKVIO);
   }
 }
 
@@ -715,19 +572,9 @@ void kvdoCompressDataVIO(DataVIO *dataVIO)
     return;
   }
 
-  // launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
+  //launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
   //                         CPU_Q_ACTION_COMPRESS_BLOCK);
-
-  if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_QAT) {
-    launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithQAT, NULL,   
-                          CPU_Q_ACTION_COMPRESS_BLOCK);
-  } else if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_ZLIB) {
-    launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithZlib, NULL,   
-                          CPU_Q_ACTION_COMPRESS_BLOCK);
-  } else {
-    launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
-                          CPU_Q_ACTION_COMPRESS_BLOCK);
-  }
+  launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithQAT, NULL, CPU_Q_ACTION_COMPRESS_BLOCK);
 }
 
 /**
