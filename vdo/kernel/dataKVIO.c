@@ -715,9 +715,6 @@ void kvdoCompressDataVIO(DataVIO *dataVIO)
     return;
   }
 
-  // launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWork, NULL,
-  //                         CPU_Q_ACTION_COMPRESS_BLOCK);
-
   if (dataKVIO->dataVIO.compressPolicy == COMPRESS_POLICY_QAT) {
     launchDataKVIOOnCPUQueue(dataKVIO, kvdoCompressWorkWithQAT, NULL,   
                           CPU_Q_ACTION_COMPRESS_BLOCK);
@@ -1005,7 +1002,8 @@ int kvdoLaunchDataKVIOFromBio(KernelLayer *layer,
 static void kvdoHashDataWork(KvdoWorkItem *item)
 {
   DataKVIO *dataKVIO = workItemAsDataKVIO(item);
-  DataVIO  *dataVIO  = &dataKVIO->dataVIO;
+  Da
+  taVIO  *dataVIO  = &dataKVIO->dataVIO;
   dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
 
   MurmurHash3_x64_128(dataKVIO->dataBlock, VDO_BLOCK_SIZE, 0x62ea60be,
@@ -1023,15 +1021,17 @@ static void kvdoHashDataWork(KvdoWorkItem *item)
  **/
 static void kvdoHashDataWorkWithQAT(KvdoWorkItem *item)
 {
-  // DataKVIO *dataKVIO = workItemAsDataKVIO(item);
-  // DataVIO  *dataVIO  = &dataKVIO->dataVIO;
-  // dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
+  DataKVIO *dataKVIO = workItemAsDataKVIO(item);
+  DataVIO  *dataVIO  = &dataKVIO->dataVIO;
+  dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
 
   // MurmurHash3_x64_128(dataKVIO->dataBlock, VDO_BLOCK_SIZE, 0x62ea60be,
   //                     &dataVIO->chunkName);
-  // dataKVIO->dedupeContext.chunkName = &dataVIO->chunkName;
+  int status = qat_crypt(dataKVIO, QAT_ENCRYPT, ...);
+  
+  dataKVIO->dedupeContext.chunkName = &dataVIO->chunkName;
 
-  // kvdoEnqueueDataVIOCallback(dataKVIO);
+  kvdoEnqueueDataVIOCallback(dataKVIO);
 }
 
 /**********************************************************************/
