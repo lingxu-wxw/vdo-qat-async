@@ -6,15 +6,10 @@ obj-y += vdo/
 install:
 	make -C /usr/src/kernels/`uname -r` M=`pwd`
 clean:
-	rm -f *.o
-	rm -f *.mod.c
-	rm -f *.order
-	rm -f *.symvers
-	rm -f uds/*.o
-	rm -f uds/*.ko
-	rm -f uds/util/*.o
-	rm -f uds/murmur/*.o
-	rm -f vdo/*.o
-	rm -f vdo/*.ko
-	rm -f vdo/base/*.o
-	rm -f vdo/kernel/*.o
+	rm -f *.o *.o.cmd *.mod.c *.order *.symvers
+	rm -f .tmp_versions/*.mod
+	rm -f uds/*.o uds/*.ko uds/*.o.cmd
+	rm -f uds/util/*.o uds/murmur/*.o
+	rm -f vdo/*.o vdo/*.ko vdo/*.o.cmd vdo/*.mod.c vdo/*.order
+	rm -f vdo/base/*.o vdo/base/*.o.cmd
+	rm -f vdo/kernel/*.o vdo/kernel/*.o.cmd
