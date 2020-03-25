@@ -1,1 +1,0 @@
-cmd_/home/hlguo/testspace/vdo-qat-async/built-in.o :=  ld -m elf_x86_64   -r -o /home/hlguo/testspace/vdo-qat-async/built-in.o /home/hlguo/testspace/vdo-qat-async/uds/built-in.o /home/hlguo/testspace/vdo-qat-async/vdo/built-in.o ; scripts/mod/modpost /home/hlguo/testspace/vdo-qat-async/built-in.o
