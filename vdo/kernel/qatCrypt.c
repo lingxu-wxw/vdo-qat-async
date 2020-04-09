@@ -57,7 +57,13 @@ typedef struct cy_callback {
 static void symcallback(void *p_callback, CpaStatus status, const CpaCySymOp operation,
     void *op_data, CpaBufferList *buf_list_dst, CpaBoolean verify)
 {
-    // TODO
+	cy_callback_t *cb = p_callback;
+
+	if (cb != NULL) {
+		/* indicate that the function has been called */
+		cb->verify_result = verify;
+		complete(&cb->complete);
+	}
 }
 
 /**********************************************************************/
@@ -92,9 +98,9 @@ int qat_cy_init(void)
 {
     CpaStatus status = CPA_STATUS_FAIL;
 
-	// if (qat_cy_init_done) {
-	// 	return (0);
-    // }
+	if (qat_cy_init_done) {
+	 	return (0);
+	}
 
 	status = cpaCyGetNumInstances(&num_inst);
 	if (status != CPA_STATUS_SUCCESS) {
@@ -200,7 +206,6 @@ static CpaStatus qat_init_crypt_session_ctx(qat_encrypt_dir_t dir, CpaInstanceHa
 		return (status);
 	}
 
-	// symcallback
 	status = cpaCySymInitSession(inst_handle, symcallback, &sd,
 	    *cy_session_ctx);
 	if (status != CPA_STATUS_SUCCESS) {
@@ -323,8 +328,154 @@ int qat_crypt(DataKVIO* dataKVIO, qat_encrypt_dir_t dir, uint8_t *src_buf, uint8
 	Cpa32U in_page_off = 0;
 	Cpa32U out_page_off = 0;
 
+	// just copy now
 
-	return 0;
+	if (dir == QAT_ENCRYPT) {
+		QAT_STAT_BUMP(encrypt_requests);
+		QAT_STAT_INCR(encrypt_total_in_bytes, enc_len);
+	} else {
+		QAT_STAT_BUMP(decrypt_requests);
+		QAT_STAT_INCR(decrypt_total_in_bytes, enc_len);
+	}
+
+	i = (Cpa32U)atomic_inc_32_nv(&inst_num) % num_inst;
+	cy_inst_handle = cy_inst_handles[i];
+
+	status = qat_init_crypt_session_ctx(dir, cy_inst_handle,
+	    &cy_session_ctx, key, crypt, aad_len);
+	if (status != CPA_STATUS_SUCCESS) {
+		/* don't count CCM as a failure since it's not supported */
+		if (zio_crypt_table[crypt].ci_crypt_type == ZC_TYPE_GCM)
+			QAT_STAT_BUMP(crypt_fails);
+		return (status);
+	}
+
+	/*
+	 * We increment nr_bufs by 2 to allow us to handle non
+	 * page-aligned buffer addresses and buffers whose sizes
+	 * are not divisible by PAGE_SIZE.
+	 */
+	status = qat_init_cy_buffer_lists(cy_inst_handle, nr_bufs,
+	    &src_buffer_list, &dst_buffer_list);
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+
+	status = QAT_PHYS_CONTIG_ALLOC(&flat_src_buf_array,
+	    nr_bufs * sizeof (CpaFlatBuffer));
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+	status = QAT_PHYS_CONTIG_ALLOC(&flat_dst_buf_array,
+	    nr_bufs * sizeof (CpaFlatBuffer));
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+	status = QAT_PHYS_CONTIG_ALLOC(&op_data.pDigestResult,
+	    ZIO_DATA_MAC_LEN);
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+	status = QAT_PHYS_CONTIG_ALLOC(&op_data.pIv,
+	    ZIO_DATA_IV_LEN);
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+	if (aad_len > 0) {
+		status = QAT_PHYS_CONTIG_ALLOC(&op_data.pAdditionalAuthData,
+		    aad_len);
+		if (status != CPA_STATUS_SUCCESS)
+			goto fail;
+		bcopy(aad_buf, op_data.pAdditionalAuthData, aad_len);
+	}
+
+	bytes_left = enc_len;
+	data = src_buf;
+	flat_src_buf = flat_src_buf_array;
+	while (bytes_left > 0) {
+		in_page_off = ((long)data & ~PAGE_MASK);
+		in_pages[in_page_num] = qat_mem_to_page(data);
+		flat_src_buf->pData = kmap(in_pages[in_page_num]) + in_page_off;
+		flat_src_buf->dataLenInBytes =
+		    min((long)PAGE_SIZE - in_page_off, (long)bytes_left);
+		data += flat_src_buf->dataLenInBytes;
+		bytes_left -= flat_src_buf->dataLenInBytes;
+		flat_src_buf++;
+		in_page_num++;
+	}
+	src_buffer_list.pBuffers = flat_src_buf_array;
+	src_buffer_list.numBuffers = in_page_num;
+
+	bytes_left = enc_len;
+	data = dst_buf;
+	flat_dst_buf = flat_dst_buf_array;
+	while (bytes_left > 0) {
+		out_page_off = ((long)data & ~PAGE_MASK);
+		out_pages[out_page_num] = qat_mem_to_page(data);
+		flat_dst_buf->pData = kmap(out_pages[out_page_num]) +
+		    out_page_off;
+		flat_dst_buf->dataLenInBytes =
+		    min((long)PAGE_SIZE - out_page_off, (long)bytes_left);
+		data += flat_dst_buf->dataLenInBytes;
+		bytes_left -= flat_dst_buf->dataLenInBytes;
+		flat_dst_buf++;
+		out_page_num++;
+	}
+	dst_buffer_list.pBuffers = flat_dst_buf_array;
+	dst_buffer_list.numBuffers = out_page_num;
+
+	op_data.sessionCtx = cy_session_ctx;
+	op_data.packetType = CPA_CY_SYM_PACKET_TYPE_FULL;
+	op_data.cryptoStartSrcOffsetInBytes = 0;
+	op_data.messageLenToCipherInBytes = 0;
+	op_data.hashStartSrcOffsetInBytes = 0;
+	op_data.messageLenToHashInBytes = 0;
+	op_data.messageLenToCipherInBytes = enc_len;
+	op_data.ivLenInBytes = ZIO_DATA_IV_LEN;
+	bcopy(iv_buf, op_data.pIv, ZIO_DATA_IV_LEN);
+	/* if dir is QAT_DECRYPT, copy digest_buf to pDigestResult */
+	if (dir == QAT_DECRYPT)
+		bcopy(digest_buf, op_data.pDigestResult, ZIO_DATA_MAC_LEN);
+
+	cb.verify_result = CPA_FALSE;
+	init_completion(&cb.complete);
+	status = cpaCySymPerformOp(cy_inst_handle, &cb, &op_data,
+	    &src_buffer_list, &dst_buffer_list, NULL);
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+
+	/* we now wait until the completion of the operation. */
+	wait_for_completion(&cb.complete);
+
+	if (cb.verify_result == CPA_FALSE) {
+		status = CPA_STATUS_FAIL;
+		goto fail;
+	}
+
+	if (dir == QAT_ENCRYPT) {
+		/* if dir is QAT_ENCRYPT, save pDigestResult to digest_buf */
+		bcopy(op_data.pDigestResult, digest_buf, ZIO_DATA_MAC_LEN);
+		QAT_STAT_INCR(encrypt_total_out_bytes, enc_len);
+	} else {
+		QAT_STAT_INCR(decrypt_total_out_bytes, enc_len);
+	}
+
+fail:
+	if (status != CPA_STATUS_SUCCESS)
+		QAT_STAT_BUMP(crypt_fails);
+
+	for (i = 0; i < in_page_num; i++)
+		kunmap(in_pages[i]);
+	for (i = 0; i < out_page_num; i++)
+		kunmap(out_pages[i]);
+
+	cpaCySymRemoveSession(cy_inst_handle, cy_session_ctx);
+	if (aad_len > 0)
+		QAT_PHYS_CONTIG_FREE(op_data.pAdditionalAuthData);
+	QAT_PHYS_CONTIG_FREE(op_data.pIv);
+	QAT_PHYS_CONTIG_FREE(op_data.pDigestResult);
+	QAT_PHYS_CONTIG_FREE(src_buffer_list.pPrivateMetaData);
+	QAT_PHYS_CONTIG_FREE(dst_buffer_list.pPrivateMetaData);
+	QAT_PHYS_CONTIG_FREE(cy_session_ctx);
+	QAT_PHYS_CONTIG_FREE(flat_src_buf_array);
+	QAT_PHYS_CONTIG_FREE(flat_dst_buf_array);
+
+	return (status);
 }
 
 /**********************************************************************/
@@ -347,8 +498,97 @@ int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, zio_cksum_t *zcp)
 	Cpa32U page_num = 0;
 	Cpa32U page_off = 0;
 
+	// just copy now
 
-    return 0;
+		QAT_STAT_BUMP(cksum_requests);
+	QAT_STAT_INCR(cksum_total_in_bytes, size);
+
+	i = (Cpa32U)atomic_inc_32_nv(&inst_num) % num_inst;
+	cy_inst_handle = cy_inst_handles[i];
+
+	status = qat_init_checksum_session_ctx(cy_inst_handle,
+	    &cy_session_ctx, cksum);
+	if (status != CPA_STATUS_SUCCESS) {
+		/* don't count unsupported checksums as a failure */
+		if (cksum == ZIO_CHECKSUM_SHA256 ||
+		    cksum == ZIO_CHECKSUM_SHA512)
+			QAT_STAT_BUMP(cksum_fails);
+		return (status);
+	}
+
+	/*
+	 * We increment nr_bufs by 2 to allow us to handle non
+	 * page-aligned buffer addresses and buffers whose sizes
+	 * are not divisible by PAGE_SIZE.
+	 */
+	status = qat_init_cy_buffer_lists(cy_inst_handle, nr_bufs,
+	    &src_buffer_list, &src_buffer_list);
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+
+	status = QAT_PHYS_CONTIG_ALLOC(&flat_src_buf_array,
+	    nr_bufs * sizeof (CpaFlatBuffer));
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+	status = QAT_PHYS_CONTIG_ALLOC(&digest_buffer,
+	    sizeof (zio_cksum_t));
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+
+	bytes_left = size;
+	data = buf;
+	flat_src_buf = flat_src_buf_array;
+	while (bytes_left > 0) {
+		page_off = ((long)data & ~PAGE_MASK);
+		in_pages[page_num] = qat_mem_to_page(data);
+		flat_src_buf->pData = kmap(in_pages[page_num]) + page_off;
+		flat_src_buf->dataLenInBytes =
+		    min((long)PAGE_SIZE - page_off, (long)bytes_left);
+		data += flat_src_buf->dataLenInBytes;
+		bytes_left -= flat_src_buf->dataLenInBytes;
+		flat_src_buf++;
+		page_num++;
+	}
+	src_buffer_list.pBuffers = flat_src_buf_array;
+	src_buffer_list.numBuffers = page_num;
+
+	op_data.sessionCtx = cy_session_ctx;
+	op_data.packetType = CPA_CY_SYM_PACKET_TYPE_FULL;
+	op_data.hashStartSrcOffsetInBytes = 0;
+	op_data.messageLenToHashInBytes = size;
+	op_data.pDigestResult = digest_buffer;
+
+	cb.verify_result = CPA_FALSE;
+	init_completion(&cb.complete);
+	status = cpaCySymPerformOp(cy_inst_handle, &cb, &op_data,
+	    &src_buffer_list, &src_buffer_list, NULL);
+	if (status != CPA_STATUS_SUCCESS)
+		goto fail;
+
+	/* we now wait until the completion of the operation. */
+	wait_for_completion(&cb.complete);
+
+	if (cb.verify_result == CPA_FALSE) {
+		status = CPA_STATUS_FAIL;
+		goto fail;
+	}
+
+	bcopy(digest_buffer, zcp, sizeof (zio_cksum_t));
+
+fail:
+	if (status != CPA_STATUS_SUCCESS)
+		QAT_STAT_BUMP(cksum_fails);
+
+	for (i = 0; i < page_num; i++)
+		kunmap(in_pages[i]);
+
+	cpaCySymRemoveSession(cy_inst_handle, cy_session_ctx);
+	QAT_PHYS_CONTIG_FREE(digest_buffer);
+	QAT_PHYS_CONTIG_FREE(src_buffer_list.pPrivateMetaData);
+	QAT_PHYS_CONTIG_FREE(cy_session_ctx);
+	QAT_PHYS_CONTIG_FREE(flat_src_buf_array);
+
+	return (status);
 }
 
 

@@ -1002,8 +1002,7 @@ int kvdoLaunchDataKVIOFromBio(KernelLayer *layer,
 static void kvdoHashDataWork(KvdoWorkItem *item)
 {
   DataKVIO *dataKVIO = workItemAsDataKVIO(item);
-  Da
-  taVIO  *dataVIO  = &dataKVIO->dataVIO;
+  DataVIO  *dataVIO  = &dataKVIO->dataVIO;
   dataVIOAddTraceRecord(dataVIO, THIS_LOCATION(NULL));
 
   MurmurHash3_x64_128(dataKVIO->dataBlock, VDO_BLOCK_SIZE, 0x62ea60be,

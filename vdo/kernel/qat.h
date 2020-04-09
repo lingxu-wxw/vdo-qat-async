@@ -48,6 +48,11 @@
 #define	QAT_MIN_BUF_SIZE	(4*1024)
 #define	QAT_MAX_BUF_SIZE	(128*1024)
 
+#define	QAT_STAT_INCR(stat, val) \
+	atomic_add_64(&qat_stats.stat.value.ui64, (val))
+#define	QAT_STAT_BUMP(stat) \
+	QAT_STAT_INCR(stat, 1)
+
 /* inlined for performance */
 static inline struct page *
 qat_mem_to_page(void *addr)
@@ -57,7 +62,6 @@ qat_mem_to_page(void *addr)
 
 	return (vmalloc_to_page(addr));
 }
-
 
 CpaStatus qat_mem_alloc_contig(void **pp_mem_addr, Cpa32U size_bytes);
 void qat_mem_free_contig(void **pp_mem_addr);
