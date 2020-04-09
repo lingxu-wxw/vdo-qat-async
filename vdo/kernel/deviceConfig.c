@@ -50,8 +50,8 @@ enum {
 };
 
 // arrays for handling different table versions
-static const uint8_t REQUIRED_ARGC[] = {10, 12, 9};
-static const uint8_t POOL_NAME_ARG_INDEX[] = {8, 10, 8};
+static const uint8_t REQUIRED_ARGC[] = {10, 12, 10};
+static const uint8_t POOL_NAME_ARG_INDEX[] = {8, 10, 9};
 
 /**
  * Decide the version number from argv.
