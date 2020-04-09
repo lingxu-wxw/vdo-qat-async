@@ -30,6 +30,7 @@
 #include "murmur/MurmurHash3.h"
 
 #include "lz4.h"
+#include "zlib.h"
 #include "qat.h"
 #include "releaseVersions.h"
 #include "volumeGeometry.h"
@@ -808,6 +809,13 @@ int makeKernelLayer(uint64_t        startingSector,
     return result;
   }
 
+  result = zlib_init();
+  if (result != 0)
+  {
+    *reason = "cannot initialize zlib";
+    freeKernelLayer(layer);
+    return result;
+  }
 
   /*
    * Part 3 - Do initializations that depend upon other previous
@@ -1094,6 +1102,7 @@ void freeKernelLayer(KernelLayer *layer)
     freeBatchProcessor(&layer->dataKVIOReleaser);
     removeLayerFromDeviceRegistry(layer->deviceConfig->poolName);
     qat_fini();
+    zlib_fini();
     break;
 
   default:
