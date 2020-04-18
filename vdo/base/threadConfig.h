@@ -33,7 +33,7 @@ struct threadConfig {
   ZoneCount    packerZoneCount;
   ThreadCount  baseThreadCount;
   ThreadID     adminThread;
-  ThreadID     journalThreads;
+  ThreadID     journalThread;
   ThreadID    *packerThreads;
   ThreadID    *logicalThreads;
   ThreadID    *physicalThreads;

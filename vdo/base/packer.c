@@ -339,7 +339,7 @@ PackerStatistics getPackerStatistics(const VDO *vdo)
     .compressedBlocksWritten    = 0,
     .compressedFragmentsInPacker = 0,
   };
-  for (ZoneCount zone = 0; zone < threadConfig->packerCount; zone++) {
+  for (ZoneCount zone = 0; zone < threadConfig->packerZoneCount; zone++) {
     stat.compressedFragmentsWritten += relaxedLoad64(&vdo->packers[zone]->fragmentsWritten);
     stat.compressedBlocksWritten   += relaxedLoad64(&vdo->packers[zone]->blocksWritten);
     stat.compressedFragmentsInPacker += relaxedLoad64(&vdo->packers[zone]->fragmentsPending);

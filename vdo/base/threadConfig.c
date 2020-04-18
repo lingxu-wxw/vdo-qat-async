@@ -169,7 +169,7 @@ int makeOneThreadConfig(ThreadConfig **configPtr)
   config->logicalThreads[0]  = 0;
   config->physicalThreads[0] = 0;
   config->hashZoneThreads[0] = 0;
-  config->packerZoneCount[0] = 0;
+  config->packerThreads[0] = 0;
   *configPtr = config;
   return VDO_SUCCESS;
 }
