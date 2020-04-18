@@ -192,7 +192,7 @@ static void closeCompressionPacker(VDOCompletion *completion)
   VDO *vdo = vdoFromCloseSubTask(completion);
   prepareSubTask(vdo, closeLogicalZones,
                  getLogicalZoneThread(getThreadConfig(vdo), 0));
-  closePacker(vdo->packer, completion);
+  closePacker(vdo->packers[0], completion);
 }
 
 /**
@@ -211,7 +211,7 @@ static void closeCallback(VDOCompletion *completion)
   }
 
   prepareSubTask(vdo, closeCompressionPacker,
-                 getPackerZoneThread(getThreadConfig(vdo)));
+                 getPackerZoneThread(getThreadConfig(vdo), 0));
   waitUntilNotEnteringReadOnlyMode(vdo, completion);
 }
 

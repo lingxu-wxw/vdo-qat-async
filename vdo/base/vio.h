@@ -54,6 +54,9 @@ struct vio {
   /* The VIO type is used for statistics and instrumentation. */
   VIOType              type;
 
+  /* The number of corresponding packer */
+  ZoneCount            packerNumber;
+
   /* Used for logging and debugging */
   Trace               *trace;
 };

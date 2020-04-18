@@ -38,6 +38,7 @@
 #include "vdoPageCache.h"
 #include "vio.h"
 #include "waitQueue.h"
+#include "packer.h"
 
 /**
  * Codes for describing the last asynchronous operation performed on a VIO.
@@ -223,6 +224,8 @@ struct dataVIO {
 
   /* All of the fields necessary for the compression path */
   CompressionState     compression;
+  /* */
+  Packer              *packer;
 };
 
 /**
@@ -845,7 +848,7 @@ static inline void launchJournalCallback(DataVIO       *dataVIO,
  **/
 static inline void assertInPackerZone(DataVIO *dataVIO)
 {
-  ThreadID expected = getPackerZoneThread(getThreadConfigFromDataVIO(dataVIO));
+  ThreadID expected = getPackerZoneThreadID(dataVIO->packer);
   ThreadID threadID = getCallbackThreadID();
   ASSERT_LOG_ONLY((expected == threadID),
                   "DataVIO for logical block %" PRIu64
@@ -865,7 +868,7 @@ static inline void setPackerCallback(DataVIO       *dataVIO,
                                      TraceLocation  location)
 {
   setCallback(dataVIOAsCompletion(dataVIO), callback,
-              getPackerZoneThread(getThreadConfigFromDataVIO(dataVIO)));
+              getPackerZoneThreadID(dataVIO->packer));
   dataVIOAddTraceRecord(dataVIO, location);
 }
 

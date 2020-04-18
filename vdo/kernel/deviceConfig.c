@@ -275,6 +275,14 @@ static int processOneThreadConfigSpec(const char        *threadParamType,
       }
       config->bioThreads = count;
       return VDO_SUCCESS;
+    } else if (strcmp(threadParamType, "packer") == 0) {
+      if (count == 0) {
+        logError("thread config string error:"
+                 " at least one 'packer' thread required");
+        return -EINVAL;
+      }
+      config->packers = count;
+      return VDO_SUCCESS;
     }
   }
 
@@ -564,6 +572,7 @@ int parseDeviceConfig(int                argc,
     .logicalZones        = 0,
     .physicalZones       = 0,
     .hashZones           = 0,
+    .packers             = 1,
   };
   config->maxDiscardBlocks = 1;
 
@@ -644,6 +653,19 @@ int parseDeviceConfig(int                argc,
     config->writePolicy = WRITE_POLICY_AUTO;
   } else {
     handleParseError(&config, errorPtr, "Invalid write policy");
+    return VDO_BAD_CONFIGURATION;
+  }
+  dm_shift_arg(&argSet);
+
+  // Get the compress policy and validate.
+  if (strcmp(argSet.argv[0], "QAT") == 0) {
+    config->compressPolicy = COMPRESS_POLICY_QAT;
+  } else if (strcmp(argSet.argv[0], "ZLIB") == 0) {
+    config->compressPolicy = COMPRESS_POLICY_ZLIB;
+  } else if (strcmp(argSet.argv[0], "LZ4") == 0) {
+    config->compressPolicy = COMPRESS_POLICY_LZ4;
+  } else {
+    handleParseError(&config, errorPtr, "Invalid compress policy");
     return VDO_BAD_CONFIGURATION;
   }
   dm_shift_arg(&argSet);
@@ -735,6 +757,17 @@ const char *getConfigWritePolicyString(DeviceConfig *config)
     return "auto";
   }
   return ((config->writePolicy == WRITE_POLICY_ASYNC) ? "async" : "sync");
+}
+
+const char *getConfigCompressPolicyString(DeviceConfig *config)
+{
+  if (config->compressPolicy == COMPRESS_POLICY_QAT) {
+    return "QAT";
+  } else if (config->compressPolicy == COMPRESS_POLICY_ZLIB) {
+    return "ZLIB";
+  } else {
+    return "LZ4";
+  }
 }
 
 

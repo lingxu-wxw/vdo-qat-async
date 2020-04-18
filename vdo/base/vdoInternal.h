@@ -80,7 +80,7 @@ struct vdo {
   SlabDepot            *depot;
 
   /* The compressed-block packer */
-  Packer               *packer;
+  Packer               **packers;
   /* Whether incoming data should be compressed */
   AtomicBool            compressing;
 
@@ -389,6 +389,10 @@ int getPhysicalZone(const VDO            *vdo,
                     PhysicalBlockNumber   pbn,
                     PhysicalZone        **zonePtr)
   __attribute__((warn_unused_result));
+
+Packer *selectPackerZone(const VDO *vdo, const UdsChunkName *name)
+  __attribute__((warn_unused_result));
+
 
 /**********************************************************************/
 // Asynchronous callback to share a duplicate block. This is only public so

@@ -27,6 +27,7 @@
 #include "blockAllocator.h"
 #include "completion.h"
 #include "logicalZone.h"
+#include "packer.h"
 #include "numUtils.h"
 #include "slabDepot.h"
 #include "vdoInternal.h"
@@ -47,6 +48,8 @@ struct flusher {
   SequenceNumber  notifyGeneration;
   /** The logical zone to notify next */
   LogicalZone    *logicalZoneToNotify;
+  /** The packer to notify next */
+  Packer         *packerToNotify;
   /** The ID of the thread on which flush requests should be made */
   ThreadID        threadID;
 };
@@ -87,7 +90,7 @@ int makeFlusher(VDO *vdo)
   }
 
   vdo->flusher->vdo      = vdo;
-  vdo->flusher->threadID = getPackerZoneThread(getThreadConfig(vdo));
+  vdo->flusher->threadID = getPackerZoneThread(getThreadConfig(vdo), 0);
   return initializeEnqueueableCompletion(&vdo->flusher->completion,
                                          FLUSH_NOTIFICATION_COMPLETION,
                                          vdo->layer);
@@ -154,8 +157,16 @@ static void finishNotification(VDOCompletion *completion)
 static void flushPackerCallback(VDOCompletion *completion)
 {
   Flusher *flusher = asFlusher(completion);
-  incrementPackerFlushGeneration(flusher->vdo->packer);
-  launchCallback(completion, finishNotification, flusher->threadID);
+  incrementPackerFlushGeneration(flusher->packerToNotify);
+  flusher->packerToNotify = getNextPacker(flusher->packerToNotify);
+  
+  if (flusher->packerToNotify == NULL) {
+    launchCallback(completion, finishNotification, flusher->threadID);
+    return;
+  }
+
+  launchCallback(completion, flushPackerCallback,
+                 getPackerZoneThreadID(flusher->packerToNotify));
 }
 
 /**
@@ -191,6 +202,7 @@ static void notifyFlush(Flusher *flusher)
   VDOFlush *flush = waiterAsFlush(getFirstWaiter(&flusher->notifiers));
   flusher->notifyGeneration    = flush->flushGeneration;
   flusher->logicalZoneToNotify = flusher->vdo->logicalZones[0];
+  flusher->packerToNotify      = flusher->vdo->packers[0];
   flusher->completion.requeue  = true;
   launchCallback(&flusher->completion, incrementGeneration,
                  getLogicalZoneThreadID(flusher->logicalZoneToNotify));

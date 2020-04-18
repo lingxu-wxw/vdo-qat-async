@@ -40,18 +40,15 @@ typedef struct packer Packer;
  *
  * @param [in]  layer           The physical layer to which compressed blocks
  *                              will be written
- * @param [in]  inputBinCount   The number of partial bins to keep in memory
- * @param [in]  outputBinCount  The number of compressed blocks that can be
- *                              written concurrently
- * @param [in]  threadConfig    The thread configuration of the VDO
+ * @param [in]  zoneNumber      The number of the zone to create
+ * @param [in]  nextPacker      The next packer in the iteration list
  * @param [out] packerPtr       A pointer to hold the new packer
  *
  * @return VDO_SUCCESS or an error
  **/
-int makePacker(PhysicalLayer       *layer,
-               BlockCount           inputBinCount,
-               BlockCount           outputBinCount,
-               const ThreadConfig  *threadConfig,
+int makePacker(VDO                 *vdo,
+               ZoneCount            zoneNumber,
+               Packer              *nextPacker,
                Packer             **packerPtr)
   __attribute__((warn_unused_result));
 
@@ -73,13 +70,14 @@ bool isSufficientlyCompressible(DataVIO *dataVIO)
   __attribute__((warn_unused_result));
 
 /**
- * Get the thread ID of the packer's zone.
+ * Get the thread ID of a packer's zone.
  *
  * @param packer  The packer
  *
  * @return The packer's thread ID
  **/
-ThreadID getPackerThreadID(Packer *packer);
+ThreadID getPackerZoneThreadID(const Packer *zone)
+  __attribute__((warn_unused_result));
 
 /**
  * Get the current statistics from the packer.
@@ -88,7 +86,7 @@ ThreadID getPackerThreadID(Packer *packer);
  *
  * @return a copy of the current statistics for the packer
  **/
-PackerStatistics getPackerStatistics(const Packer *packer)
+PackerStatistics getPackerStatistics(const VDO *vdo)
   __attribute__((warn_unused_result));
 
 /**
@@ -97,6 +95,18 @@ PackerStatistics getPackerStatistics(const Packer *packer)
  * @param dataVIO  The DataVIO to pack
  **/
 void attemptPacking(DataVIO *dataVIO);
+
+/**
+ *
+ * Get the next highest-numbered logical zone, or <code>NULL</code> if the
+ * zone is the highest-numbered zone in its VDO.
+ *
+ * @param packer   The packer to query
+ *
+ * #return The packer whose zone number is one greater than the given packer,
+ *         or <code>NULL</code> if there is no such packer 
+ **/
+Packer *getNextPacker(const Packer *packer);
 
 /**
  * Request that the packer flush asynchronously. All bins with at least two

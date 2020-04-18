@@ -40,7 +40,7 @@
  **/
 static inline void assertOnPackerThread(Packer *packer, const char *caller)
 {
-  ASSERT_LOG_ONLY((getCallbackThreadID() == packer->threadID),
+  ASSERT_LOG_ONLY((getCallbackThreadID() == packer->threadData->threadID),
                   "%s() called from packer thread", caller);
 }
 
@@ -212,28 +212,36 @@ static void freeOutputBin(OutputBin **binPtr)
 }
 
 /**********************************************************************/
-int makePacker(PhysicalLayer       *layer,
-               BlockCount           inputBinCount,
-               BlockCount           outputBinCount,
-               const ThreadConfig  *threadConfig,
+int makePacker(VDO                 *vdo,
+               ZoneCount            zoneNumber,
+               Packer              *nextPacker,
                Packer             **packerPtr)
 {
   Packer *packer;
-  int result = ALLOCATE_EXTENDED(Packer, outputBinCount,
+  PhysicalLayer *layer = vdo->layer;
+  int result = ALLOCATE_EXTENDED(Packer, DEFAULT_PACKER_OUTPUT_BINS,
                                  OutputBin *, __func__, &packer);
   if (result != VDO_SUCCESS) {
     return result;
   }
+  
+  result = initializeEnqueueableCompletion(&packer->completion, PACKER_COMPLETION, vdo->layer);
+  if (result != VDO_SUCCESS) {
+    return result;
+  }
 
-  packer->threadID       = getPackerZoneThread(threadConfig);
+  ThreadID threadID = getPackerZoneThread(getThreadConfig(vdo), zoneNumber);
+  packer->zoneNumber     = zoneNumber;
+  packer->nextPacker     = nextPacker;
+  packer->threadData     = &vdo->threadData[threadID];
   packer->binDataSize    = VDO_BLOCK_SIZE - sizeof(CompressedBlockHeader);
-  packer->size           = inputBinCount;
+  packer->size           = DEFAULT_PACKER_INPUT_BINS;
   packer->maxSlots       = MAX_COMPRESSION_SLOTS;
-  packer->outputBinCount = outputBinCount;
+  packer->outputBinCount = DEFAULT_PACKER_OUTPUT_BINS;
   initializeRing(&packer->inputBins);
   initializeRing(&packer->outputBins);
 
-  for (BlockCount i = 0; i < inputBinCount; i++) {
+  for (BlockCount i = 0; i < DEFAULT_PACKER_INPUT_BINS; i++) {
     int result = makeInputBin(packer);
     if (result != VDO_SUCCESS) {
       freePacker(&packer);
@@ -253,7 +261,7 @@ int makePacker(PhysicalLayer       *layer,
     return result;
   }
 
-  for (BlockCount i = 0; i < outputBinCount; i++) {
+  for (BlockCount i = 0; i < DEFAULT_PACKER_OUTPUT_BINS; i++) {
     int result = makeOutputBin(packer, layer);
     if (result != VDO_SUCCESS) {
       freePacker(&packer);
@@ -272,6 +280,8 @@ void freePacker(Packer **packerPtr)
   if (packer == NULL) {
     return;
   }
+  
+  destroyEnqueueable(&packer->completion);
 
   InputBin *input;
   while ((input = getFullestBin(packer)) != NULL) {
@@ -299,8 +309,14 @@ void freePacker(Packer **packerPtr)
  **/
 static inline Packer *getPackerFromDataVIO(DataVIO *dataVIO)
 {
-  return getVDOFromDataVIO(dataVIO)->packer;
+  return dataVIO->packer;
 }
+
+ThreadID getPackerZoneThreadID(const Packer *zone)
+{
+  return zone->threadData->threadID;
+}
+
 
 /**********************************************************************/
 bool isSufficientlyCompressible(DataVIO *dataVIO)
@@ -310,24 +326,25 @@ bool isSufficientlyCompressible(DataVIO *dataVIO)
 }
 
 /**********************************************************************/
-ThreadID getPackerThreadID(Packer *packer)
-{
-  return packer->threadID;
-}
-
-/**********************************************************************/
-PackerStatistics getPackerStatistics(const Packer *packer)
+PackerStatistics getPackerStatistics(const VDO *vdo)
 {
   /*
    * This is called from getVDOStatistics(), which is called from outside the
    * packer thread. These are just statistics with no semantics that could
    * rely on memory order, so unfenced reads are sufficient.
    */
-  return (PackerStatistics) {
-    .compressedFragmentsWritten  = relaxedLoad64(&packer->fragmentsWritten),
-    .compressedBlocksWritten     = relaxedLoad64(&packer->blocksWritten),
-    .compressedFragmentsInPacker = relaxedLoad64(&packer->fragmentsPending),
+  const ThreadConfig *threadConfig = getThreadConfig(vdo);
+  PackerStatistics stat = {
+    .compressedFragmentsWritten = 0,
+    .compressedBlocksWritten    = 0,
+    .compressedFragmentsInPacker = 0,
   };
+  for (ZoneCount zone = 0; zone < threadConfig->packerCount; zone++) {
+    stat.compressedFragmentsWritten += relaxedLoad64(&vdo->packers[zone]->fragmentsWritten);
+    stat.compressedBlocksWritten   += relaxedLoad64(&vdo->packers[zone]->blocksWritten);
+    stat.compressedFragmentsInPacker += relaxedLoad64(&vdo->packers[zone]->fragmentsPending);
+  }
+  return stat;
 }
 
 /**
@@ -390,8 +407,9 @@ static void writePendingBatches(Packer *packer);
 __attribute__((warn_unused_result))
 static bool switchToPackerThread(VDOCompletion *completion)
 {
-  VIO      *vio      = asVIO(completion);
-  ThreadID  threadID = vio->vdo->packer->threadID;
+  VIO *vio = asVIO(completion);
+  Packer   *packer   = vio->vdo->packers[vio->packerNumber];
+  ThreadID  threadID = packer->threadData->threadID;
   if (completion->callbackThreadID == threadID) {
     return true;
   }
@@ -443,7 +461,7 @@ static void completeOutputBin(VDOCompletion *completion)
                        vio->physical);
   }
 
-  Packer *packer = vio->vdo->packer;
+  Packer *packer = vio->vdo->packers[vio->packerNumber];
   finishOutputBin(packer, completion->parent);
   writePendingBatches(packer);
   checkFlushProgress(packer);
@@ -852,7 +870,7 @@ void attemptPacking(DataVIO *dataVIO)
 /**********************************************************************/
 void flushPacker(Packer *packer)
 {
-  assertOnPackerThread(packer, __func__);
+  // assertOnPackerThread(packer, __func__);
   if (packer->flushing) {
     return;
   }
@@ -920,6 +938,44 @@ void incrementPackerFlushGeneration(Packer *packer)
   flushPacker(packer);
 }
 
+/*********************************************************************/
+Packer *getNextPacker(const Packer *packer)
+{
+  return packer->nextPacker;
+}
+
+/*********************************************************************/
+static Packer *asPacker(VDOCompletion *completion)
+{
+  STATIC_ASSERT(offsetof(Packer, completion) == 0);
+  assertCompletionType(completion->type, PACKER_COMPLETION);
+  return (Packer *) completion;
+}
+
+/*********************************************************************/
+void closePackerCallback(VDOCompletion *completion)
+{
+  Packer *packer = asPacker(completion);
+  closePacker(getNextPacker(packer), completion->parent);
+}
+
+/**********************************************************************/
+void checkPackerClosure(Packer *packer)
+{
+  if (packer->closeRequest == NULL || packer->notifying) return;
+  VDOCompletion *completion = packer->closeRequest;
+  packer->closeRequest = NULL;
+  if (packer->nextPacker == NULL)
+  {
+    // last packer, just finish
+    finishCompletion(completion, VDO_SUCCESS);
+    return;
+  }
+  // not last packer, pass completion to next;
+  packer->notifying = true;
+  launchCallbackWithParent(&packer->completion, closePackerCallback, getPackerZoneThreadID(getNextPacker(packer)), completion);
+}
+
 /**********************************************************************/
 void closePacker(Packer *packer, VDOCompletion *completion)
 {
@@ -928,6 +984,7 @@ void closePacker(Packer *packer, VDOCompletion *completion)
                   "no simultaneous closePacker() calls");
   packer->closeRequest = completion;
   flushPacker(packer);
+  checkPackerClosure(packer);
 }
 
 /**********************************************************************/

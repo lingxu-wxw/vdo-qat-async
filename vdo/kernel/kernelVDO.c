@@ -254,7 +254,7 @@ bool setKVDOCompressing(KVDO *kvdo, bool enableCompression)
   VDOCompressData data;
   data.enable = enableCompression;
   performKVDOOperation(kvdo, setCompressingWork, &data,
-                       getPackerZoneThread(getThreadConfig(kvdo->vdo)),
+                       getPackerZoneThread(getThreadConfig(kvdo->vdo), 0),
                        &compressWait);
   return data.wasEnabled;
 }

@@ -157,7 +157,6 @@ int makeVDO(PhysicalLayer *layer, VDO **vdoPtr)
 void destroyVDO(VDO *vdo)
 {
   freeFlusher(&vdo->flusher);
-  freePacker(&vdo->packer);
   freeRecoveryJournal(&vdo->recoveryJournal);
   freeSlabDepot(&vdo->depot);
   freeVDOLayout(&vdo->layout);
@@ -188,6 +187,14 @@ void destroyVDO(VDO *vdo)
   }
   FREE(vdo->physicalZones);
   vdo->physicalZones = NULL;
+  
+  if (vdo->packers != NULL) {
+    for (ZoneCount zone = 0; zone < threadConfig->packerCount; zone++) {
+       freePacker(&vdo->packers[zone]);
+    }
+  }
+  FREE(vdo->packers);
+  vdo->packers = NULL;
 
   if (threadConfig != NULL) {
     freeThreadDataArray(&vdo->threadData, threadConfig->baseThreadCount);
@@ -762,7 +769,10 @@ bool setVDOCompressing(VDO *vdo, bool enableCompression)
   if (stateChanged && !enableCompression) {
     // Flushing the packer is asynchronous, but we don't care when it
     // finishes.
-    flushPacker(vdo->packer);
+    const ThreadConfig *threadConfig = getThreadConfig(vdo);
+    for (ZoneCount zone = 0; zone < threadConfig->packerCount; zone++) {
+      flushPacker(vdo->packers[zone]);
+    }
   }
 
   logInfo("compression is %s", (enableCompression ? "enabled" : "disabled"));
@@ -875,7 +885,7 @@ void getVDOStatistics(const VDO *vdo, VDOStatistics *stats)
   stats->logicalBlocksUsed  = getJournalLogicalBlocksUsed(journal);
   stats->allocator          = getDepotBlockAllocatorStatistics(depot);
   stats->journal            = getRecoveryJournalStatistics(journal);
-  stats->packer             = getPackerStatistics(vdo->packer);
+  stats->packer             = getPackerStatistics(vdo);
   stats->slabJournal        = getDepotSlabJournalStatistics(depot);
   stats->slabSummary        = getSlabSummaryStatistics(getSlabSummary(depot));
   stats->refCounts          = getDepotRefCountsStatistics(depot);
@@ -987,7 +997,6 @@ void dumpVDOStatus(const VDO *vdo)
 {
   dumpFlusher(vdo->flusher);
   dumpRecoveryJournalStatistics(vdo->recoveryJournal);
-  dumpPacker(vdo->packer);
   dumpSlabDepot(vdo->depot);
 
   const ThreadConfig *threadConfig = getThreadConfig(vdo);
@@ -1001,6 +1010,10 @@ void dumpVDOStatus(const VDO *vdo)
 
   for (ZoneCount zone = 0; zone < threadConfig->hashZoneCount; zone++) {
     dumpHashZone(vdo->hashZones[zone]);
+  }
+  
+  for (ZoneCount zone = 0; zone < threadConfig->packerCount; zone++) {
+    dumpPacker(vdo->packers[zone]);
   }
 }
 
@@ -1082,6 +1095,29 @@ int getPhysicalZone(const VDO            *vdo,
   *zonePtr = vdo->physicalZones[getSlabZoneNumber(slab)];
   return VDO_SUCCESS;
 }
+
+Packer *selectPackerZone(const VDO *vdo, const UdsChunkName *name)
+{
+/*
+   * Use a fragment of the chunk name as a hash code. To ensure uniform
+   * distributions, it must not overlap with fragments used elsewhere. Eight
+   * bits of hash should suffice since the number of hash zones is small.
+   */
+  // XXX Make a central repository for these offsets ala hashUtils.
+  // XXX Verify that the first byte is independent enough.
+  uint32_t hash = name->name[0];
+
+  /*
+   * Scale the 8-bit hash fragment to a zone index by treating it as a binary
+   * fraction and multiplying that by the zone count. If the hash is uniformly
+   * distributed over [0 .. 2^8-1], then (hash * count / 2^8) should be
+   * uniformly distributed over [0 .. count-1]. The multiply and shift is much
+   * faster than a divide (modulus) on X86 CPUs.
+   */
+  return vdo->packers[(hash * getThreadConfig(vdo)->packerCount) >> 8];
+}
+
+
 
 /**********************************************************************/
 ZonedPBN validateDedupeAdvice(VDO                *vdo,

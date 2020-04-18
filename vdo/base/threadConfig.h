@@ -30,10 +30,11 @@ struct threadConfig {
   ZoneCount    logicalZoneCount;
   ZoneCount    physicalZoneCount;
   ZoneCount    hashZoneCount;
+  ZoneCount    packerCount;
   ThreadCount  baseThreadCount;
   ThreadID     adminThread;
   ThreadID     journalThread;
-  ThreadID     packerThread;
+  ThreadID    *packerThreads;
   ThreadID    *logicalThreads;
   ThreadID    *physicalThreads;
   ThreadID    *hashZoneThreads;
@@ -55,6 +56,7 @@ struct threadConfig {
 int makeThreadConfig(ZoneCount      logicalZoneCount,
                      ZoneCount      physicalZoneCount,
                      ZoneCount      hashZoneCount,
+                     ZoneCount      packerCount,
                      ThreadConfig **configPtr)
   __attribute__((warn_unused_result));
 
@@ -169,9 +171,12 @@ static inline ThreadID getJournalZoneThread(const ThreadConfig *threadConfig)
  * @return the thread id for the packer zone
  **/
 __attribute__((warn_unused_result))
-static inline ThreadID getPackerZoneThread(const ThreadConfig *threadConfig)
+static inline ThreadID getPackerZoneThread(const ThreadConfig *threadConfig, 
+                                           ZoneCount packer)
 {
-  return threadConfig->packerThread;
+  ASSERT_LOG_ONLY((packer <= threadConfig->packerCount), 
+                  "packer zone valid");
+  return threadConfig->packerThreads[packer];
 }
 
 /**

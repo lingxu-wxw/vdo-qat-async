@@ -82,54 +82,64 @@ typedef struct {
 } OutputBatch;
 
 struct packer {
-  /** The ID of the packer's callback thread */
-  ThreadID        threadID;
+  /** The completion to notify all zones*/
+  VDOCompletion     completion;
+  /** Which packer zone this is */
+  ZoneCount         zoneNumber;
+  /** The per-thread data for this zone  */
+  const ThreadData *threadData;
   /** A request to close the packer */
-  VDOCompletion  *closeRequest;
+  VDOCompletion    *closeRequest;
+  
+  /** Whether a notification is in prograss */
+  bool              notifying;
+  /** The next zone in the iteration list */
+  Packer           *nextPacker;
+
   /** The number of input bins */
-  BlockCount      size;
+  BlockCount        size;
   /** The block size minus header size */
-  size_t          binDataSize;
+  size_t            binDataSize;
   /** The number of compression slots */
-  size_t          maxSlots;
+  size_t            maxSlots;
   /** A ring of all InputBins, kept sorted by freeSpace */
-  RingNode        inputBins;
+  RingNode          inputBins;
   /** A ring of all OutputBins */
-  RingNode        outputBins;
+  RingNode          outputBins;
   /**
    * A bin to hold DataVIOs which were canceled out of the packer and are
    * waiting to rendezvous with the canceling DataVIO.
    **/
-  InputBin       *canceledBin;
+  InputBin         *canceledBin;
 
   /** The current flush generation */
-  SequenceNumber  flushGeneration;
+  SequenceNumber    flushGeneration;
 
   /** Writing all bins and purging bins' queues */
-  bool            flushing;
+  bool              flushing;
   /** Whether the packer is closed */
-  bool            closed;
+  bool              closed;
   /** True when writing batched DataVIOs */
-  bool            writingBatches;
+  bool              writingBatches;
 
   // Atomic counters corresponding to the fields of PackerStatistics:
 
   /** Number of compressed data items written since startup */
-  Atomic64        fragmentsWritten;
+  Atomic64          fragmentsWritten;
   /** Number of blocks containing compressed items written since startup */
-  Atomic64        blocksWritten;
+  Atomic64          blocksWritten;
   /** Number of DataVIOs that are pending in the packer */
-  Atomic64        fragmentsPending;
+  Atomic64          fragmentsPending;
 
   /** Queue of batched DataVIOs waiting to be packed */
-  WaitQueue       batchedDataVIOs;
+  WaitQueue         batchedDataVIOs;
 
   /** The total number of output bins allocated */
-  size_t          outputBinCount;
+  size_t            outputBinCount;
   /** The number of idle output bins on the stack */
-  size_t          idleOutputBinCount;
+  size_t            idleOutputBinCount;
   /** The stack of idle output bins (0=bottom) */
-  OutputBin      *idleOutputBins[];
+  OutputBin        *idleOutputBins[]; 
 };
 
 /**

@@ -36,6 +36,7 @@ typedef struct {
   int logicalZones;
   int physicalZones;
   int hashZones;
+  int packers;
 } __attribute__((packed)) ThreadCountConfig;
 
 typedef uint32_t TableVersion;
@@ -50,6 +51,7 @@ typedef struct {
   BlockCount         physicalBlocks;
   unsigned int       logicalBlockSize;
   WritePolicy        writePolicy;
+  CompressPolicy     compressPolicy;
   unsigned int       cacheSize;
   unsigned int       blockMapMaximumAge;
   bool               mdRaid5ModeEnabled;
@@ -107,6 +109,16 @@ void freeDeviceConfig(DeviceConfig **configPtr);
  * @returns a pointer to a string describing the write policy
  **/
 const char *getConfigWritePolicyString(DeviceConfig *config)
+  __attribute__((warn_unused_result));
+
+/**
+ * Get the text describing the compress policy.
+ *
+ * @param config  The device config
+ *
+ * @returns a pointer to a string describing the compress policy
+ **/
+const char *getConfigCompressPolicyString(DeviceConfig *config)
   __attribute__((warn_unused_result));
 
 #endif // DEVICE_CONFIG_H
