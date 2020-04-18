@@ -418,8 +418,24 @@ static int decodeVDO(VDO *vdo, bool validateConfig)
     }
   }
 
-  return makePacker(vdo->layer, DEFAULT_PACKER_INPUT_BINS,
-                    DEFAULT_PACKER_OUTPUT_BINS, threadConfig, &vdo->packer);
+  result = ALLOCATE(threadConfig->packerZoneCount, Packer *, __func__,
+                    &vdo->packers);
+  if (result != VDO_SUCCESS) {
+    return result;
+  }
+
+  Packer *packer = NULL;
+  for (int index = threadConfig->packerZoneCount - 1; index >=0; index--) {
+    int result = makePacker(vdo, index, packer, &packer);
+    if (result != VDO_SUCCESS) {
+      return result;
+    }
+    vdo->packers[index] = packer;
+  }
+  return result;
+
+  // return makePacker(vdo->layer, DEFAULT_PACKER_INPUT_BINS,
+  //                  DEFAULT_PACKER_OUTPUT_BINS, threadConfig, &vdo->packer);
 }
 
 /**

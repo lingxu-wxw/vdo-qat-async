@@ -275,6 +275,14 @@ static int processOneThreadConfigSpec(const char        *threadParamType,
       }
       config->bioThreads = count;
       return VDO_SUCCESS;
+    } else if (strcmp(threadParamType, "packer") == 0) {
+      if (count == 0) {
+        logError("thread config string error:"
+                 " at least one 'packer' thread required");
+        return -EINVAL;
+      }
+      config->packerZones = count;
+      return VDO_SUCCESS;
     }
   }
 
@@ -564,6 +572,7 @@ int parseDeviceConfig(int                argc,
     .logicalZones        = 0,
     .physicalZones       = 0,
     .hashZones           = 0,
+    .packerZones         = 1,
   };
   config->maxDiscardBlocks = 1;
 

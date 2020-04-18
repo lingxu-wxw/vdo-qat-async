@@ -31,6 +31,7 @@
 static int allocateThreadConfig(ZoneCount      logicalZoneCount,
                                 ZoneCount      physicalZoneCount,
                                 ZoneCount      hashZoneCount,
+                                ZoneCount      packerZoneCount,
                                 ZoneCount      baseThreadCount,
                                 ThreadConfig **configPtr)
 {
@@ -61,9 +62,17 @@ static int allocateThreadConfig(ZoneCount      logicalZoneCount,
     return result;
   }
 
+  result = ALLOCATE(packerZoneCount, ThreadID, "packer thread array",
+                    &config->packerThreads);
+  if (result != VDO_SUCCESS) {
+    freeThreadConfig(&config);
+    return result;
+  }
+
   config->logicalZoneCount  = logicalZoneCount;
   config->physicalZoneCount = physicalZoneCount;
   config->hashZoneCount     = hashZoneCount;
+  config->packerZoneCount   = packerZoneCount;
   config->baseThreadCount   = baseThreadCount;
 
   *configPtr = config;
@@ -84,11 +93,13 @@ static void assignThreadIDs(ThreadID   threadIDs[],
 int makeThreadConfig(ZoneCount      logicalZoneCount,
                      ZoneCount      physicalZoneCount,
                      ZoneCount      hashZoneCount,
+                     ZoneCount      packerZoneCount,
                      ThreadConfig **configPtr)
 {
   if ((logicalZoneCount == 0)
       && (physicalZoneCount == 0)
-      && (hashZoneCount == 0)) {
+      && (hashZoneCount == 0)
+      && (packerZoneCount == 0)) {
     return makeOneThreadConfig(configPtr);
   }
 
@@ -107,9 +118,9 @@ int makeThreadConfig(ZoneCount      logicalZoneCount,
   }
 
   ThreadConfig *config;
-  ThreadCount total = logicalZoneCount + physicalZoneCount + hashZoneCount + 2;
+  ThreadCount total = logicalZoneCount + physicalZoneCount + hashZoneCount + packerZoneCount + 1;
   int result = allocateThreadConfig(logicalZoneCount, physicalZoneCount,
-                                    hashZoneCount, total, &config);
+                                    hashZoneCount, packerZoneCount, total, &config);
   if (result != VDO_SUCCESS) {
     return result;
   }
@@ -117,10 +128,10 @@ int makeThreadConfig(ZoneCount      logicalZoneCount,
   ThreadID id = 0;
   config->adminThread   = id;
   config->journalThread = id++;
-  config->packerThread  = id++;
   assignThreadIDs(config->logicalThreads, logicalZoneCount, &id);
   assignThreadIDs(config->physicalThreads, physicalZoneCount, &id);
   assignThreadIDs(config->hashZoneThreads, hashZoneCount, &id);
+  assignThreadIDs(config->packerThreads, packerZoneCount, &id);
 
   ASSERT_LOG_ONLY(id == total, "correct number of thread IDs assigned");
 
@@ -140,6 +151,7 @@ int makeZeroThreadConfig(ThreadConfig **configPtr)
   config->logicalZoneCount  = 0;
   config->physicalZoneCount = 0;
   config->hashZoneCount     = 0;
+  config->packerZoneCount   = 0;
   config->baseThreadCount   = 0;
   *configPtr                = config;
   return VDO_SUCCESS;
@@ -149,7 +161,7 @@ int makeZeroThreadConfig(ThreadConfig **configPtr)
 int makeOneThreadConfig(ThreadConfig **configPtr)
 {
   ThreadConfig *config;
-  int result = allocateThreadConfig(1, 1, 1, 1, &config);
+  int result = allocateThreadConfig(1, 1, 1, 1, 1, &config);
   if (result != VDO_SUCCESS) {
     return result;
   }
@@ -157,6 +169,7 @@ int makeOneThreadConfig(ThreadConfig **configPtr)
   config->logicalThreads[0]  = 0;
   config->physicalThreads[0] = 0;
   config->hashZoneThreads[0] = 0;
+  config->packerZoneCount[0] = 0;
   *configPtr = config;
   return VDO_SUCCESS;
 }
@@ -168,6 +181,7 @@ int copyThreadConfig(const ThreadConfig *oldConfig, ThreadConfig **configPtr)
   int result = allocateThreadConfig(oldConfig->logicalZoneCount,
                                     oldConfig->physicalZoneCount,
                                     oldConfig->hashZoneCount,
+                                    oldConfig->packerZoneCount,
                                     oldConfig->baseThreadCount,
                                     &config);
   if (result != VDO_SUCCESS) {
@@ -176,7 +190,6 @@ int copyThreadConfig(const ThreadConfig *oldConfig, ThreadConfig **configPtr)
 
   config->adminThread   = oldConfig->adminThread;
   config->journalThread = oldConfig->journalThread;
-  config->packerThread  = oldConfig->packerThread;
   for (ZoneCount i = 0; i < config->logicalZoneCount; i++) {
     config->logicalThreads[i] = oldConfig->logicalThreads[i];
   }
@@ -186,6 +199,9 @@ int copyThreadConfig(const ThreadConfig *oldConfig, ThreadConfig **configPtr)
   for (ZoneCount i = 0; i < config->hashZoneCount; i++) {
     config->hashZoneThreads[i] = oldConfig->hashZoneThreads[i];
   }
+  for (ZoneCount i = 0; i < config->packerZoneCount; i++) {
+    config->packerThreads[i] = oldConfig->packerThreads[i];
+  } 
 
   *configPtr = config;
   return VDO_SUCCESS;
@@ -204,6 +220,7 @@ void freeThreadConfig(ThreadConfig **configPtr)
   FREE(config->logicalThreads);
   FREE(config->physicalThreads);
   FREE(config->hashZoneThreads);
+  FREE(config->packerThreads);
   FREE(config);
 }
 
@@ -243,10 +260,7 @@ void getVDOThreadName(const ThreadConfig *threadConfig,
     // Theoretically this could be different from the journal thread.
     snprintf(buffer, bufferLength, "adminQ");
     return;
-  } else if (threadID == threadConfig->packerThread) {
-    snprintf(buffer, bufferLength, "packerQ");
-    return;
-  }
+  } 
   if (getZoneThreadName(threadConfig->logicalThreads,
                         threadConfig->logicalZoneCount,
                         threadID, "logQ", buffer, bufferLength)) {
@@ -260,6 +274,11 @@ void getVDOThreadName(const ThreadConfig *threadConfig,
   if (getZoneThreadName(threadConfig->hashZoneThreads,
                         threadConfig->hashZoneCount,
                         threadID, "hashQ", buffer, bufferLength)) {
+    return;
+  }
+  if (getZoneThreadName(threadConfig->packerThreads,
+                        threadConfig->packerZoneCount,
+                        threadID, "packerQ", buffer, bufferLength)){
     return;
   }
 

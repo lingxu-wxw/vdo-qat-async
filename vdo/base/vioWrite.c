@@ -857,6 +857,8 @@ static void resolveHashZone(VDOCompletion *completion)
 
   dataVIO->hashZone
     = selectHashZone(getVDOFromDataVIO(dataVIO), &dataVIO->chunkName);
+  dataVIO->packer
+    = selectPackerZone(getVDOFromDataVIO(dataVIO), &dataVIO->chunkName);
   dataVIO->lastAsyncOperation = ACQUIRE_HASH_LOCK;
   launchHashZoneCallback(dataVIO, lockHashInZone, THIS_LOCATION(NULL));
 }

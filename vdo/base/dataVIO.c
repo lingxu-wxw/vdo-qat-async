@@ -282,6 +282,7 @@ void attemptLogicalBlockLock(VDOCompletion *completion)
   // lock holders in the packer.
   if (!isReadDataVIO(lockHolder) && cancelCompression(lockHolder)) {
     dataVIO->compression.lockHolder = lockHolder;
+    dataVIO->packer = lockHolder->packer;
     launchPackerCallback(dataVIO, removeLockHolderFromPacker,
                          THIS_LOCATION("$F;cb=removeLockHolderFromPacker"));
   }

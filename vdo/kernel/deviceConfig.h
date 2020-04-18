@@ -36,6 +36,7 @@ typedef struct {
   int logicalZones;
   int physicalZones;
   int hashZones;
+  int packerZones;
 } __attribute__((packed)) ThreadCountConfig;
 
 typedef uint32_t TableVersion;

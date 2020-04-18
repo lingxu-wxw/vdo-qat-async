@@ -80,7 +80,7 @@ struct vdo {
   SlabDepot            *depot;
 
   /* The compressed-block packer */
-  Packer               *packer;
+  Packer               **packers;
   /* Whether incoming data should be compressed */
   AtomicBool            compressing;
 
@@ -368,6 +368,17 @@ void assertOnLogicalZoneThread(const VDO  *vdo,
  * @return  The hash zone responsible for the chunk name
  **/
 HashZone *selectHashZone(const VDO *vdo, const UdsChunkName *name)
+  __attribute__((warn_unused_result));
+
+/**
+ * Select the packer zone responsible for locking a given chunk name.
+ *
+ * @param vdo   The VDO containing the packer zones
+ * @param name  The chunk name
+ *
+ * @return  The packer zone responsible for the chunk name
+ **/
+Packer *selectPackerZone(const VDO *vdo, const UdsChunkName *name)
   __attribute__((warn_unused_result));
 
 /**

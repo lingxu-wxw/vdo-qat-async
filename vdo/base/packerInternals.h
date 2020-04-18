@@ -83,9 +83,22 @@ typedef struct {
 
 struct packer {
   /** The ID of the packer's callback thread */
-  ThreadID        threadID;
+  /** ThreadID        threadID; */
+
+  /** The completion to notify all zones*/
+  VDOCompletion     completion;
+  /** Which packer zone this is */
+  ZoneCount         zoneNumber;
+  /** The per-thread data for this zone  */
+  const ThreadData *threadData;
   /** A request to close the packer */
-  VDOCompletion  *closeRequest;
+  VDOCompletion    *closeRequest;
+
+  /** Whether a notification is in prograss */
+  bool              notifying;
+  /** The next zone in the iteration list */
+  Packer           *nextPacker;
+
   /** The number of input bins */
   BlockCount      size;
   /** The block size minus header size */

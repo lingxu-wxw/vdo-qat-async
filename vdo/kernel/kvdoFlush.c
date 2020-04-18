@@ -96,7 +96,7 @@ static void enqueueKVDOFlush(KVDOFlush *kvdoFlush)
   setupWorkItem(&kvdoFlush->workItem, kvdoFlushWork, NULL, REQ_Q_ACTION_FLUSH);
   KVDO *kvdo = &kvdoFlush->layer->kvdo;
   enqueueKVDOWork(kvdo, &kvdoFlush->workItem,
-                  getPackerZoneThread(getThreadConfig(kvdo->vdo)));
+                  getPackerZoneThread(getThreadConfig(kvdo->vdo), 0));
 }
 
 /**********************************************************************/
