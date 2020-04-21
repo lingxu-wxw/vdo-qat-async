@@ -165,7 +165,7 @@ int makeBlockMap(BlockCount           logicalBlocks,
   map->rootOrigin              = rootOrigin;
   map->rootCount               = rootCount;
   map->entryCount              = logicalBlocks;
-  map->recoveryJournalThreadID = getJournalZoneThread(threadConfig);
+  map->recoveryJournalThreadID = getJournalZoneThread(threadConfig, 0);
 
   ZoneCount zoneCount = threadConfig->logicalZoneCount;
   for (ZoneCount zone = 0; zone < zoneCount; zone++) {

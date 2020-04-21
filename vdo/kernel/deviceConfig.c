@@ -283,6 +283,14 @@ static int processOneThreadConfigSpec(const char        *threadParamType,
       }
       config->packerZones = count;
       return VDO_SUCCESS;
+    } else if (strcmp(threadParamType, "journal") == 0) {
+      if (count == 0) {
+        logError("thread config string error:"
+                 " at least one 'journal' thread required");
+        return -EINVAL;
+      }
+      config->journalZones = count;
+      return VDO_SUCCESS;
     }
   }
 
@@ -573,6 +581,7 @@ int parseDeviceConfig(int                argc,
     .physicalZones       = 0,
     .hashZones           = 0,
     .packerZones         = 1,
+    .journalZones        = 1,
   };
   config->maxDiscardBlocks = 1;
 

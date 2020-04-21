@@ -104,7 +104,7 @@ static void abortLoad(VDOCompletion *completion)
   } else {
     prepareAdminSubTaskOnThread(vdo, closeRecoveryJournalForAbort,
                                 closeRecoveryJournalForAbort,
-                                getJournalZoneThread(getThreadConfig(vdo)));
+                                getJournalZoneThread(getThreadConfig(vdo), 0));
   }
 
   waitUntilNotEnteringReadOnlyMode(vdo, completion);
@@ -433,6 +433,8 @@ static int decodeVDO(VDO *vdo, bool validateConfig)
     vdo->packers[index] = packer;
   }
   return result;
+
+  // TODO
 
   // return makePacker(vdo->layer, DEFAULT_PACKER_INPUT_BINS,
   //                  DEFAULT_PACKER_OUTPUT_BINS, threadConfig, &vdo->packer);

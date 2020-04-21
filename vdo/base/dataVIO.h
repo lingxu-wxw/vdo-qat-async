@@ -39,6 +39,7 @@
 #include "vio.h"
 #include "waitQueue.h"
 #include "packer.h"
+#include "recoveryJournal.h"
 
 /**
  * Codes for describing the last asynchronous operation performed on a VIO.
@@ -230,6 +231,9 @@ struct dataVIO {
 
   /* the packer of dataVIO */
   Packer              *packer;
+
+  /* the recovery journal of dataVIO */
+  RecoveryJournal     *recoveryJournal;
 };
 
 /**
@@ -805,8 +809,10 @@ static inline void launchNewMappedZoneCallback(DataVIO       *dataVIO,
  **/
 static inline void assertInJournalZone(DataVIO *dataVIO)
 {
+  // ThreadID expected
+  //   = getJournalZoneThread(getThreadConfigFromDataVIO(dataVIO));
   ThreadID expected
-    = getJournalZoneThread(getThreadConfigFromDataVIO(dataVIO));
+     = getJournalZoneThreadID(dataVIO->recoveryJournal);
   ThreadID threadID = getCallbackThreadID();
   ASSERT_LOG_ONLY((expected == threadID),
                   "DataVIO for logical block %" PRIu64
@@ -825,8 +831,10 @@ static inline void setJournalCallback(DataVIO       *dataVIO,
                                       VDOAction     *callback,
                                       TraceLocation  location)
 {
+  // setCallback(dataVIOAsCompletion(dataVIO), callback,
+  //             getJournalZoneThread(getThreadConfigFromDataVIO(dataVIO)));
   setCallback(dataVIOAsCompletion(dataVIO), callback,
-              getJournalZoneThread(getThreadConfigFromDataVIO(dataVIO)));
+               getJournalZoneThreadID(dataVIO->recoveryJournal));
   dataVIOAddTraceRecord(dataVIO, location);
 }
 

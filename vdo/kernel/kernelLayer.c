@@ -722,6 +722,7 @@ int makeKernelLayer(uint64_t        startingSector,
                             config->threadCounts.physicalZones,
                             config->threadCounts.hashZones,
                             config->threadCounts.packerZones,
+                            config->threadCounts.journalZones,
                             threadConfigPointer);
   if (result != VDO_SUCCESS) {
     *reason = "Cannot create thread configuration";

@@ -31,9 +31,10 @@ struct threadConfig {
   ZoneCount    physicalZoneCount;
   ZoneCount    hashZoneCount;
   ZoneCount    packerZoneCount;
+  ZoneCount    journalZoneCount;
   ThreadCount  baseThreadCount;
   ThreadID     adminThread;
-  ThreadID     journalThread;
+  ThreadID    *journalThreads;
   ThreadID    *packerThreads;
   ThreadID    *logicalThreads;
   ThreadID    *physicalThreads;
@@ -57,6 +58,7 @@ int makeThreadConfig(ZoneCount      logicalZoneCount,
                      ZoneCount      physicalZoneCount,
                      ZoneCount      hashZoneCount,
                      ZoneCount      packerZoneCount,
+                     ZoneCount      journalZoneCount,
                      ThreadConfig **configPtr)
   __attribute__((warn_unused_result));
 
@@ -158,9 +160,12 @@ static inline ThreadID getHashZoneThread(const ThreadConfig *threadConfig,
  * @return the thread id for the journal zone
  **/
 __attribute__((warn_unused_result))
-static inline ThreadID getJournalZoneThread(const ThreadConfig *threadConfig)
+static inline ThreadID getJournalZoneThread(const ThreadConfig *threadConfig,
+                                            ZoneCount journalZone)
 {
-  return threadConfig->journalThread;
+  ASSERT_LOG_ONLY((journalZone <= threadConfig->journalZoneCount),
+                  "journal zone valid");
+  return threadConfig->journalThreads[journalZone];
 }
 
 /**

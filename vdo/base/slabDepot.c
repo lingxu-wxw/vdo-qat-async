@@ -234,7 +234,7 @@ static int allocateComponents(SlabDepot          *depot,
     return result;
   }
 
-  depot->recoveryJournalThreadID = getJournalZoneThread(threadConfig);
+  depot->recoveryJournalThreadID = getJournalZoneThread(threadConfig, 0);
   depot->origin = depot->firstBlock;
 
   result = makeSlabSummary(layer, summaryPartition, threadConfig,

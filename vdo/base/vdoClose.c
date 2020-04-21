@@ -165,7 +165,7 @@ static void closeMap(VDOCompletion *completion)
 {
   VDO *vdo = vdoFromCloseSubTask(completion);
   prepareSubTask(vdo, closeJournal,
-                 getJournalZoneThread(getThreadConfig(vdo)));
+                 getJournalZoneThread(getThreadConfig(vdo), 0));
   closeBlockMap(vdo->blockMap, completion);
 }
 
