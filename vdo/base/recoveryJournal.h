@@ -219,7 +219,7 @@ void initializeRecoveryJournalPostRebuild(RecoveryJournal *journal,
  *
  * @return  The number of block map pages allocated from slabs
  **/
-BlockCount getJournalBlockMapDataBlocksUsed(RecoveryJournal *journal)
+BlockCount getJournalBlockMapDataBlocksUsed(VDO *vdo)
   __attribute__((warn_unused_result));
 
 /**
@@ -374,7 +374,7 @@ void closeRecoveryJournal(RecoveryJournal *journal, VDOCompletion *parent);
  *
  * @return the number of logical blocks in use by the VDO
  **/
-BlockCount getJournalLogicalBlocksUsed(const RecoveryJournal *journal)
+BlockCount getJournalLogicalBlocksUsed(const VDO *vdo)
   __attribute__((warn_unused_result));
 
 /**
@@ -385,7 +385,7 @@ BlockCount getJournalLogicalBlocksUsed(const RecoveryJournal *journal)
  * @return a copy of the current statistics for the journal
  **/
 RecoveryJournalStatistics
-getRecoveryJournalStatistics(const RecoveryJournal *journal)
+getRecoveryJournalStatistics(const VDO *vdo)
   __attribute__((warn_unused_result));
 
 /**
@@ -394,6 +394,7 @@ getRecoveryJournalStatistics(const RecoveryJournal *journal)
  *
  * @param journal   The recovery journal to dump
  **/
-void dumpRecoveryJournalStatistics(const RecoveryJournal *journal);
+void dumpRecoveryJournalStatistics(const RecoveryJournal *journal, 
+                                  const VDO *vdo);
 
 #endif // RECOVERY_JOURNAL_H

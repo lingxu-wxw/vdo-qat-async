@@ -512,9 +512,14 @@ void initializeRecoveryJournalPostRebuild(RecoveryJournal *journal,
 }
 
 /**********************************************************************/
-BlockCount getJournalBlockMapDataBlocksUsed(RecoveryJournal *journal)
+// BlockCount getJournalBlockMapDataBlocksUsed(RecoveryJournal *journal)
+BlockCount getJournalBlockMapDataBlocksUsed(VDO *vdo)
 {
-  return journal->blockMapDataBlocks;
+  BlockCount blockMapDataBlocks = 0;
+  for (ZoneCount zone = 0; zone < threadConfig->journalCount; zone++) {
+    logicalBlocksUsed += vdo->recoveryJournals[zone]->blockMapDataBlocks;
+  }
+  return blockMapDataBlocks;
 }
 
 /**********************************************************************/
@@ -1162,22 +1167,29 @@ void closeRecoveryJournal(RecoveryJournal *journal, VDOCompletion *parent)
 }
 
 /**********************************************************************/
-BlockCount getJournalLogicalBlocksUsed(const RecoveryJournal *journal)
+// BlockCount getJournalLogicalBlocksUsed(const RecoveryJournal *journal)
+BlockCount getJournalLogicalBlocksUsed(const VDO *vdo)
 {
-  return journal->logicalBlocksUsed;
+  BlockCount logicalBlocksUsed = 0;
+  for (ZoneCount zone = 0; zone < threadConfig->journalCount; zone++) {
+    logicalBlocksUsed += vdo->recoveryJournals[zone]->logicalBlocksUsed;
+  }
+  return logicalBlocksUsed;
 }
 
 /**********************************************************************/
+// RecoveryJournalStatistics getRecoveryJournalStatistics(const RecoveryJournal *journal)
 RecoveryJournalStatistics
-getRecoveryJournalStatistics(const RecoveryJournal *journal)
+getRecoveryJournalStatistics(const VDO *vdo)
 {
-  return journal->events;
+  // return journal->events;
 }
 
 /**********************************************************************/
-void dumpRecoveryJournalStatistics(const RecoveryJournal *journal)
+void dumpRecoveryJournalStatistics(const RecoveryJournal *journal,
+                                  const VDO *vdo)
 {
-  RecoveryJournalStatistics stats = getRecoveryJournalStatistics(journal);
+  RecoveryJournalStatistics stats = getRecoveryJournalStatistics(vdo);
   logInfo("Recovery Journal");
   logInfo("  blockMapHead=%" PRIu64 " slabJournalHead=%" PRIu64
           " lastWriteAcknowledged=%" PRIu64 " tail=%" PRIu64

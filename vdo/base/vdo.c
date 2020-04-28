@@ -157,7 +157,6 @@ int makeVDO(PhysicalLayer *layer, VDO **vdoPtr)
 void destroyVDO(VDO *vdo)
 {
   freeFlusher(&vdo->flusher);
-  freeRecoveryJournal(&vdo->recoveryJournal);
   freeSlabDepot(&vdo->depot);
   freeVDOLayout(&vdo->layout);
   freeSuperBlock(&vdo->superBlock);
@@ -195,6 +194,15 @@ void destroyVDO(VDO *vdo)
   }
   FREE(vdo->packers);
   vdo->packers = NULL;
+
+  if (vdo->recoveryJournals != NULL) {
+    for (ZoneCount zone = 0; zone < threadConfig->journalZoneCount; zone++) {
+       freePacker(&vdo->recoveryJournals[zone]);
+    }
+  }
+  FREE(vdo->recoveryJournals);
+  vdo->recoveryJournals = NULL;
+
 
   if (threadConfig != NULL) {
     freeThreadDataArray(&vdo->threadData, threadConfig->baseThreadCount);
@@ -347,9 +355,11 @@ static int encodeVDO(VDO *vdo)
     return result;
   }
 
-  result = encodeRecoveryJournal(vdo->recoveryJournal, buffer);
-  if (result != VDO_SUCCESS) {
-    return result;
+  for (ZoneCount zone = 0; zone < threadConfig->journalZoneCount; zone++) {
+    result = encodeRecoveryJournal(vdo->recoveryJournals[zone], buffer);
+    if (result != VDO_SUCCESS) {
+      return result;
+    }
   }
 
   result = encodeSlabDepot(vdo->depot, buffer);
@@ -864,7 +874,6 @@ void getVDOStatistics(const VDO *vdo, VDOStatistics *stats)
 {
   // These are immutable properties of the VDO object, so it is safe to
   // query them from any thread.
-  RecoveryJournal *journal  = vdo->recoveryJournal;
   SlabDepot       *depot    = vdo->depot;
   // XXX config.physicalBlocks is actually mutated during resize and is in a
   // packed structure, but resize runs on the admin thread so we're usually OK.
@@ -885,9 +894,9 @@ void getVDOStatistics(const VDO *vdo, VDOStatistics *stats)
   // The callees are responsible for thread-safety.
   stats->dataBlocksUsed     = getPhysicalBlocksAllocated(vdo);
   stats->overheadBlocksUsed = getPhysicalBlocksOverhead(vdo);
-  stats->logicalBlocksUsed  = getJournalLogicalBlocksUsed(journal);
+  stats->logicalBlocksUsed  = getJournalLogicalBlocksUsed(vdo);
   stats->allocator          = getDepotBlockAllocatorStatistics(depot);
-  stats->journal            = getRecoveryJournalStatistics(journal);
+  stats->journal            = getRecoveryJournalStatistics(vdo);
   stats->packer             = getPackerStatistics(vdo);
   stats->slabJournal        = getDepotSlabJournalStatistics(depot);
   stats->slabSummary        = getSlabSummaryStatistics(getSlabSummary(depot));
@@ -909,7 +918,7 @@ void getVDOStatistics(const VDO *vdo, VDOStatistics *stats)
 BlockCount getPhysicalBlocksAllocated(const VDO *vdo)
 {
   return (getDepotAllocatedBlocks(vdo->depot)
-          - getJournalBlockMapDataBlocksUsed(vdo->recoveryJournal));
+          - getJournalBlockMapDataBlocksUsed(vdo));
 }
 
 /**********************************************************************/
@@ -925,14 +934,14 @@ BlockCount getPhysicalBlocksOverhead(const VDO *vdo)
   // packed structure, but resize runs on admin thread so we're usually OK.
   return (vdo->config.physicalBlocks
           - getDepotDataBlocks(vdo->depot)
-          + getJournalBlockMapDataBlocksUsed(vdo->recoveryJournal));
+          + getJournalBlockMapDataBlocksUsed(vdo));
 }
 
 /**********************************************************************/
 BlockCount getTotalBlockMapBlocks(const VDO *vdo)
 {
   return (getNumberOfFixedBlockMapPages(vdo->blockMap)
-          + getJournalBlockMapDataBlocksUsed(vdo->recoveryJournal));
+          + getJournalBlockMapDataBlocksUsed(vdo));
 }
 
 /**********************************************************************/
@@ -1016,16 +1025,15 @@ SlabDepot *getSlabDepot(VDO *vdo)
 }
 
 /**********************************************************************/
-RecoveryJournal *getRecoveryJournal(VDO *vdo)
+RecoveryJournal *getRecoveryJournal(VDO *vdo, ZoneCount journalZoneCount)
 {
-  return vdo->recoveryJournal;
+  return vdo->recoveryJournals[journalZoneCount];
 }
 
 /**********************************************************************/
 void dumpVDOStatus(const VDO *vdo)
 {
   dumpFlusher(vdo->flusher);
-  dumpRecoveryJournalStatistics(vdo->recoveryJournal);
   dumpSlabDepot(vdo->depot);
 
   const ThreadConfig *threadConfig = getThreadConfig(vdo);
@@ -1043,6 +1051,10 @@ void dumpVDOStatus(const VDO *vdo)
 
   for (ZoneCount zone = 0; zone < threadConfig->packerZoneCount; zone++) {
     dumpPacker(vdo->packers[zone]);
+  }
+
+  for (ZoneCount zone = 0; zone < threadConfig->journalZoneCount; zone++) {
+    dumpRecoveryJournalStatistics(vdo->recoveryJournals[zone], vdo);
   }
 }
 
@@ -1117,6 +1129,27 @@ Packer *selectPackerZone(const VDO *vdo, const UdsChunkName *name)
    * faster than a divide (modulus) on X86 CPUs.
    */
   return vdo->packers[(hash * getThreadConfig(vdo)->packerZoneCount) >> 8];
+}
+
+Packer *selectJournalZone(const VDO *vdo, const UdsChunkName *name)
+{
+/*
+   * Use a fragment of the chunk name as a hash code. To ensure uniform
+   * distributions, it must not overlap with fragments used elsewhere. Eight
+   * bits of hash should suffice since the number of hash zones is small.
+   */
+  // XXX Make a central repository for these offsets ala hashUtils.
+  // XXX Verify that the first byte is independent enough.
+  uint32_t hash = name->name[0];
+
+  /*
+   * Scale the 8-bit hash fragment to a zone index by treating it as a binary
+   * fraction and multiplying that by the zone count. If the hash is uniformly
+   * distributed over [0 .. 2^8-1], then (hash * count / 2^8) should be
+   * uniformly distributed over [0 .. count-1]. The multiply and shift is much
+   * faster than a divide (modulus) on X86 CPUs.
+   */
+  return vdo->recoveryJournals[(hash * getThreadConfig(vdo)->journalZoneCount) >> 8];
 }
 
 /**********************************************************************/

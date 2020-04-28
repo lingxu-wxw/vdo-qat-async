@@ -74,7 +74,7 @@ struct vdo {
   BlockMap             *blockMap;
 
   /* The journal for block map recovery */
-  RecoveryJournal      *recoveryJournal;
+  RecoveryJournal      **recoveryJournals;
 
   /* The slab depot */
   SlabDepot            *depot;
@@ -240,7 +240,7 @@ SlabDepot *getSlabDepot(VDO *vdo)
  *
  * @return the recovery journal from the VDO
  **/
-RecoveryJournal *getRecoveryJournal(VDO *vdo)
+RecoveryJournal *getRecoveryJournal(VDO *vdo, ZoneCount journalZoneCount)
   __attribute__((warn_unused_result));
 
 /**
@@ -379,6 +379,17 @@ HashZone *selectHashZone(const VDO *vdo, const UdsChunkName *name)
  * @return  The packer zone responsible for the chunk name
  **/
 Packer *selectPackerZone(const VDO *vdo, const UdsChunkName *name)
+  __attribute__((warn_unused_result));
+
+/**
+ * Select the journal zone responsible for locking a given chunk name.
+ *
+ * @param vdo   The VDO containing the journal zones
+ * @param name  The chunk name
+ *
+ * @return  The journal zone responsible for the chunk name
+ **/
+Packer *selectJournalZone(const VDO *vdo, const UdsChunkName *name)
   __attribute__((warn_unused_result));
 
 /**
