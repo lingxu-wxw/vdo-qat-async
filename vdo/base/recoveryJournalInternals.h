@@ -37,10 +37,23 @@
 typedef struct recoveryJournalBlock RecoveryJournalBlock;
 
 struct recoveryJournal {
+  /** The thread ID of the journal zone */
+  /* ThreadID                   threadID; */
+
   /** The completion for shutdown */
   VDOCompletion              completion;
-  /** The thread ID of the journal zone */
-  ThreadID                   threadID;
+  /** Which packer zone this is */
+  ZoneCount                  zoneNumber;
+  /** The per-thread data for this zone  */
+  const ThreadData          *threadData;
+  /** A request to close the journal */
+  VDOCompletion             *closeRequest;
+
+  /** Whether a notification is in prograss */
+  bool                       notifying;
+  /** The next zone in the iteration list */
+  RecoveryJournal           *nextJournal;
+
   /** The slab depot which can hold locks on this journal */
   SlabDepot                 *depot;
   /** The block map which can hold locks on this journal */

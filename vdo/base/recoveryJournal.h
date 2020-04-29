@@ -165,6 +165,9 @@ int makeRecoveryJournal(Nonce                 nonce,
                         BlockCount            tailBufferSize,
                         ReadOnlyModeContext  *readOnlyContext,
                         const ThreadConfig   *threadConfig,
+                        VDO                  *vdo,
+                        ZoneCount             zoneNumber,
+                        RecoveryJournal      *nextJournal,
                         RecoveryJournal     **journalPtr)
   __attribute__((warn_unused_result));
 
@@ -375,6 +378,16 @@ void closeRecoveryJournal(RecoveryJournal *journal, VDOCompletion *parent);
  * @return the number of logical blocks in use by the VDO
  **/
 BlockCount getJournalLogicalBlocksUsed(const VDO *vdo)
+  __attribute__((warn_unused_result));
+
+/**
+ * Get the thread ID of a journal's zone.
+ *
+ * @param recoveryJournal  The journal
+ *
+ * @return The journal's thread ID
+ **/
+ThreadID getJournalZoneThreadID(const RecoveryJournal *journal)
   __attribute__((warn_unused_result));
 
 /**

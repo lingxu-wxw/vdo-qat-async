@@ -78,7 +78,7 @@ static void closeRecoveryJournalForAbort(VDOCompletion *completion)
 {
   VDO *vdo = vdoFromLoadSubTask(completion);
   prepareAdminSubTask(vdo, finishAborting, finishAborting);
-  closeRecoveryJournal(vdo->recoveryJournal, completion);
+  closeRecoveryJournal(vdo->recoveryJournals[0], completion);
 }
 
 /**
@@ -99,7 +99,15 @@ static void abortLoad(VDOCompletion *completion)
 
   // Preserve the error.
   setCompletionResult(completion->parent, completion->result);
-  if (vdo->recoveryJournal == NULL) {
+
+  bool recoveryJournalsNullFlag = true;
+  for (ZoneCount z = 0; z < threadConfig->journalZoneCount; z++) {
+    if (vdo->recoveryJournals[z] != NULL) {
+      recoveryJournalsNullFlag = false;
+      break;
+    }
+  }
+  if (recoveryJournalsNullFlag == false) {
     prepareAdminSubTask(vdo, finishAborting, finishAborting);
   } else {
     prepareAdminSubTaskOnThread(vdo, closeRecoveryJournalForAbort,
@@ -220,7 +228,7 @@ static void prepareToComeOnline(VDOCompletion *completion)
     loadType = DEFER_LOAD;
   }
 
-  initializeBlockMapFromJournal(vdo->blockMap, vdo->recoveryJournal);
+  initializeBlockMapFromJournal(vdo->blockMap, vdo->recoveryJournals[0]);
 
   prepareAdminSubTask(vdo, scrubSlabs, handleScrubbingError);
   prepareToAllocate(vdo->depot, loadType, completion);
@@ -279,19 +287,24 @@ static int finishVDODecode(VDO *vdo)
 {
   Buffer             *buffer       = getComponentBuffer(vdo->superBlock);
   const ThreadConfig *threadConfig = getThreadConfig(vdo);
-  int result = makeRecoveryJournal(vdo->nonce, vdo->layer,
-                                   getVDOPartition(vdo->layout,
-                                                   RECOVERY_JOURNAL_PARTITION),
-                                   vdo->completeRecoveries,
-                                   vdo->config.recoveryJournalSize,
-                                   RECOVERY_JOURNAL_TAIL_BUFFER_SIZE,
-                                   &vdo->readOnlyContext, threadConfig,
-                                   &vdo->recoveryJournal);
-  if (result != VDO_SUCCESS) {
-    return result;
+  
+  RecoveryJournal *recoveryJournal = NULL;
+  for (int index = threadConfig->packerZoneCount - 1; index >= 0; index--) {
+    int result = makeRecoveryJournal(vdo->nonce, vdo->layer,
+                                    getVDOPartition(vdo->layout,
+                                                    RECOVERY_JOURNAL_PARTITION),
+                                    vdo->completeRecoveries,
+                                    vdo->config.recoveryJournalSize,
+                                    RECOVERY_JOURNAL_TAIL_BUFFER_SIZE,
+                                    &vdo->readOnlyContext, vdo, index,
+                                    recoveryJournal, &recoveryJournal);
+    if (result != VDO_SUCCESS) {
+      return result;
+    }
+    vdo->recoveryJournals[index] = recoveryJournal;
   }
 
-  result = decodeRecoveryJournal(vdo->recoveryJournal, buffer);
+  result = decodeRecoveryJournal(vdo->recoveryJournals[0], buffer);
   if (result != VDO_SUCCESS) {
     return result;
   }
@@ -299,7 +312,7 @@ static int finishVDODecode(VDO *vdo)
   result = decodeSlabDepot(buffer, threadConfig, vdo->nonce, vdo->layer,
                            getVDOPartition(vdo->layout,
                                            SLAB_SUMMARY_PARTITION),
-                           &vdo->readOnlyContext, vdo->recoveryJournal,
+                           &vdo->readOnlyContext, vdo->recoveryJournals[0],
                            &vdo->depot);
   if (result != VDO_SUCCESS) {
     return result;
@@ -365,7 +378,7 @@ static int decodeVDO(VDO *vdo, bool validateConfig)
     return VDO_BAD_CONFIGURATION;
   }
   result = makeBlockMapCaches(vdo->blockMap, vdo->layer,
-                              &vdo->readOnlyContext, vdo->recoveryJournal,
+                              &vdo->readOnlyContext, vdo->recoveryJournals[0],
                               vdo->nonce, getConfiguredCacheSize(vdo),
                               maximumAge);
   if (result != VDO_SUCCESS) {
@@ -373,7 +386,7 @@ static int decodeVDO(VDO *vdo, bool validateConfig)
   }
 
   // Prepare the recovery journal for new entries.
-  openRecoveryJournal(vdo->recoveryJournal, vdo->depot, vdo->blockMap);
+  openRecoveryJournal(vdo->recoveryJournals[0], vdo->depot, vdo->blockMap);
 
   result = ALLOCATE(threadConfig->hashZoneCount, HashZone *, __func__,
                     &vdo->hashZones);
@@ -425,7 +438,7 @@ static int decodeVDO(VDO *vdo, bool validateConfig)
   }
 
   Packer *packer = NULL;
-  for (int index = threadConfig->packerZoneCount - 1; index >=0; index--) {
+  for (int index = threadConfig->packerZoneCount - 1; index >= 0; index--) {
     int result = makePacker(vdo, index, packer, &packer);
     if (result != VDO_SUCCESS) {
       return result;

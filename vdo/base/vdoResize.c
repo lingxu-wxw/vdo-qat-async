@@ -103,7 +103,7 @@ static void abortResize(VDOCompletion *completion)
 static void finishVDOResize(VDOCompletion *completion)
 {
   VDO *vdo = vdoFromGrowPhysicalSubTask(completion);
-  setRecoveryJournalPartition(vdo->recoveryJournal,
+  setRecoveryJournalPartition(vdo->recoveryJournals[0],
                               getVDOPartition(vdo->layout,
                                               RECOVERY_JOURNAL_PARTITION));
   completeCompletion(completion->parent);

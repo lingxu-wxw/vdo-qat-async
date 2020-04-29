@@ -327,7 +327,7 @@ static bool abortRecoveryOnError(int result, RecoveryCompletion *recovery)
 static RecoveryJournalEntry getEntry(const RecoveryCompletion *recovery,
                                      const RecoveryPoint      *point)
 {
-  RecoveryJournal *journal = recovery->vdo->recoveryJournal;
+  RecoveryJournal *journal = recovery->vdo->recoveryJournals[0];
   PhysicalBlockNumber blockNumber
     = getRecoveryJournalBlockNumber(journal, point->sequenceNumber);
   off_t sectorOffset
@@ -503,8 +503,12 @@ static void addSynthesizedEntries(VDOCompletion *completion)
 
   logInfo("Synthesized %zu missing journal entries",
           recovery->missingDecrefCount);
-  vdo->recoveryJournal->logicalBlocksUsed  = recovery->logicalBlocksUsed;
-  vdo->recoveryJournal->blockMapDataBlocks = recovery->blockMapDataBlocks;
+  vdo->recoveryJournals[0]->logicalBlocksUsed  = recovery->logicalBlocksUsed;
+  vdo->recoveryJournals[0]->blockMapDataBlocks = recovery->blockMapDataBlocks;
+  for (ZoneCount zone = 1; zone < threadConfig->packerZoneCount; zone++) {
+    vdo->recoveryJournals[zone]->logicalBlocksUsed  = 0;
+    vdo->recoveryJournals[zone]->blockMapDataBlocks = 0;
+  }
 
   prepareCompletion(completion, startSuperBlockSave, finishParentCallback,
                     completion->callbackThreadID, completion->parent);
@@ -523,7 +527,7 @@ static void addSynthesizedEntries(VDOCompletion *completion)
  **/
 static int computeUsages(RecoveryCompletion *recovery)
 {
-  RecoveryJournal *journal = recovery->vdo->recoveryJournal;
+  RecoveryJournal *journal = recovery->vdo->recoveryJournals[0];
   PackedJournalHeader *tailHeader
     = getJournalBlockHeader(journal, recovery->journalData, recovery->tail);
 
@@ -591,7 +595,7 @@ static void applySynthesizedDecrefs(RecoveryCompletion *recovery)
 
   recovery->nextJournalPoint  = (JournalPoint) {
     .sequenceNumber = recovery->tail,
-    .entryCount     = recovery->vdo->recoveryJournal->entriesPerBlock,
+    .entryCount     = recovery->vdo->recoveryJournals[0]->entriesPerBlock,
   };
   launchCallbackWithParent(&recovery->subTaskCompletion, addSynthesizedEntries,
                            getAdminThread(getThreadConfig(recovery->vdo)),
@@ -768,7 +772,7 @@ void addSlabJournalEntries(VDOCompletion *completion)
 {
   RecoveryCompletion *recovery = asRecoveryCompletion(completion->parent);
   VDO                *vdo      = recovery->vdo;
-  RecoveryJournal    *journal  = vdo->recoveryJournal;
+  RecoveryJournal    *journal  = vdo->recoveryJournals[0];
   // We want to be on the logical thread so that findPBNsFromBlockMap() later
   // is on the right thread.
   assertOnLogicalZoneThread(vdo, 0, __func__);
@@ -827,7 +831,7 @@ void addSlabJournalEntries(VDOCompletion *completion)
  **/
 static bool findContiguousRange(RecoveryCompletion *recovery)
 {
-  RecoveryJournal *journal = recovery->vdo->recoveryJournal;
+  RecoveryJournal *journal = recovery->vdo->recoveryJournals[0];
   SequenceNumber head
     = minSequenceNumber(recovery->blockMapHead, recovery->slabJournalHead);
 
@@ -931,7 +935,7 @@ static void applyJournalEntries(VDOCompletion *completion)
 {
   RecoveryCompletion *recovery = asRecoveryCompletion(completion->parent);
   VDO                *vdo      = recovery->vdo;
-  RecoveryJournal    *journal  = vdo->recoveryJournal;
+  RecoveryJournal    *journal  = vdo->recoveryJournals[0];
   logInfo("Finished reading recovery journal");
   bool foundEntries = findHeadAndTail(journal, recovery->journalData,
                                       &recovery->highestTail,
@@ -1015,7 +1019,7 @@ static void loadJournal(VDOCompletion *completion)
   prepareCompletion(completion, applyJournalEntries, finishParentCallback,
                     getLogicalZoneThread(getThreadConfig(vdo), 0),
                     completion->parent);
-  loadJournalAsync(vdo->recoveryJournal, completion, &recovery->journalData);
+  loadJournalAsync(vdo->recoveryJournals[0], completion, &recovery->journalData);
 }
 
 /**********************************************************************/

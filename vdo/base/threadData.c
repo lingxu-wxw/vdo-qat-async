@@ -241,8 +241,10 @@ static void makeThreadReadOnly(VDOCompletion *completion)
   // Inform the recovery journal and block allocators that we have entered
   // read-only mode if we are on the correct thread to do so.
   const ThreadConfig *threadConfig = getThreadConfig(vdo);
-  if (threadData->threadID == threadConfig->journalThread) {
-    notifyRecoveryJournalOfReadOnlyMode(vdo->recoveryJournal);
+  for (ZoneCount z = 0; z < threadConfig->journalZoneCount; z++) {
+    if (threadData->threadID == getJournalZoneThread(threadConfig, z)) {
+      notifyRecoveryJournalOfReadOnlyMode(vdo->recoveryJournals[z]);
+    }
   }
   for (ZoneCount z = 0; z < threadConfig->physicalZoneCount; z++) {
     if (threadData->threadID == getPhysicalZoneThread(threadConfig, z)) {

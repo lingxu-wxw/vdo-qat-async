@@ -168,19 +168,24 @@ static int finishSodiumDecode(VDO *vdo)
 {
   Buffer *buffer = getComponentBuffer(vdo->superBlock);
   const ThreadConfig *threadConfig = getThreadConfig(vdo);
-  int result = makeRecoveryJournal(vdo->nonce, vdo->layer,
-                                   getVDOPartition(vdo->layout,
-                                                   RECOVERY_JOURNAL_PARTITION),
-                                   vdo->completeRecoveries,
-                                   vdo->config.recoveryJournalSize,
-                                   RECOVERY_JOURNAL_TAIL_BUFFER_SIZE,
-                                   &vdo->readOnlyContext, threadConfig,
-                                   &vdo->recoveryJournal);
-  if (result != VDO_SUCCESS) {
-    return result;
+
+  RecoveryJournal *recoveryJournal = NULL;
+  for (int index = threadConfig->packerZoneCount - 1; index >= 0; index--) {
+    int result = makeRecoveryJournal(vdo->nonce, vdo->layer,
+                                    getVDOPartition(vdo->layout,
+                                                    RECOVERY_JOURNAL_PARTITION),
+                                    vdo->completeRecoveries,
+                                    vdo->config.recoveryJournalSize,
+                                    RECOVERY_JOURNAL_TAIL_BUFFER_SIZE,
+                                    &vdo->readOnlyContext, vdo, index,
+                                    recoveryJournal, &recoveryJournal);
+    if (result != VDO_SUCCESS) {
+      return result;
+    }
+    vdo->recoveryJournals[index] = recoveryJournal;
   }
 
-  result = decodeSodiumRecoveryJournal(vdo->recoveryJournal, buffer);
+  result = decodeSodiumRecoveryJournal(vdo->recoveryJournals[0], buffer);
   if (result != VDO_SUCCESS) {
     return result;
   }
@@ -188,7 +193,7 @@ static int finishSodiumDecode(VDO *vdo)
   result = decodeSodiumSlabDepot(buffer, threadConfig, vdo->nonce, vdo->layer,
                                  getVDOPartition(vdo->layout,
                                                  SLAB_SUMMARY_PARTITION),
-                                 &vdo->readOnlyContext, vdo->recoveryJournal,
+                                 &vdo->readOnlyContext, vdo->recoveryJournals[0],
                                  &vdo->depot);
   if (result != VDO_SUCCESS) {
     return result;

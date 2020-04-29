@@ -151,7 +151,7 @@ static void completeRebuild(VDOCompletion *completion)
 static void finishRebuild(VDOCompletion *completion)
 {
   ReadOnlyRebuildCompletion *rebuild = asReadOnlyRebuildCompletion(completion);
-  initializeRecoveryJournalPostRebuild(rebuild->vdo->recoveryJournal,
+  initializeRecoveryJournalPostRebuild(rebuild->vdo->recoveryJournals[0],
                                        rebuild->vdo->completeRecoveries,
                                        rebuild->tail,
                                        rebuild->logicalBlocksUsed,
@@ -281,7 +281,7 @@ static void appendSectorEntries(ReadOnlyRebuildCompletion *rebuild,
 static int extractJournalEntries(ReadOnlyRebuildCompletion *rebuild)
 {
   VDO             *vdo      = rebuild->vdo;
-  RecoveryJournal *journal  = vdo->recoveryJournal;
+  RecoveryJournal *journal  = vdo->recoveryJournals[0];
   SequenceNumber   first    = rebuild->head;
   SequenceNumber   last     = rebuild->tail;
   BlockCount       maxCount = ((last - first + 1) * journal->entriesPerBlock);
@@ -353,7 +353,7 @@ static void applyJournalEntries(VDOCompletion *completion)
   logInfo("Finished reading recovery journal");
   assertOnLogicalZoneThread(vdo, 0, __func__);
 
-  bool foundEntries = findHeadAndTail(vdo->recoveryJournal,
+  bool foundEntries = findHeadAndTail(vdo->recoveryJournals[0],
                                      rebuild->journalData, &rebuild->tail,
                                      &rebuild->head, NULL);
   if (foundEntries) {
@@ -387,7 +387,7 @@ static void loadJournal(VDOCompletion *completion)
 
   prepareCompletion(completion, applyJournalEntries, finishParentCallback,
                     completion->callbackThreadID, completion->parent);
-  loadJournalAsync(vdo->recoveryJournal, completion, &rebuild->journalData);
+  loadJournalAsync(vdo->recoveryJournals[0], completion, &rebuild->journalData);
 }
 
 /**********************************************************************/

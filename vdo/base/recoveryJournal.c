@@ -119,7 +119,7 @@ static RecoveryJournalBlock *popActiveList(RecoveryJournal *journal)
 static void assertOnJournalThread(RecoveryJournal *journal,
                                   const char      *functionName)
 {
-  ASSERT_LOG_ONLY((getCallbackThreadID() == journal->threadID),
+  ASSERT_LOG_ONLY((getCallbackThreadID() == journal->threadData->threadID),
                   "%s() called on journal thread", functionName);
 }
 
@@ -376,6 +376,7 @@ static void reapRecoveryJournalCallback(VDOCompletion *completion)
 }
 
 /**********************************************************************/
+/*
 int makeRecoveryJournal(Nonce                 nonce,
                         PhysicalLayer        *layer,
                         Partition            *partition,
@@ -384,6 +385,18 @@ int makeRecoveryJournal(Nonce                 nonce,
                         BlockCount            tailBufferSize,
                         ReadOnlyModeContext  *readOnlyContext,
                         const ThreadConfig   *threadConfig,
+                        RecoveryJournal     **journalPtr,
+*/
+int makeRecoveryJournal(Nonce                 nonce,
+                        PhysicalLayer        *layer,
+                        Partition            *partition,
+                        uint64_t              recoveryCount,
+                        BlockCount            journalSize,
+                        BlockCount            tailBufferSize,
+                        ReadOnlyModeContext  *readOnlyContext,
+                        VDO                  *vdo,
+                        ZoneCount             zoneNumber,
+                        RecoveryJournal      *nextJournal,
                         RecoveryJournal     **journalPtr)
 {
   RecoveryJournal *journal;
@@ -398,7 +411,12 @@ int makeRecoveryJournal(Nonce                 nonce,
   initializeRing(&journal->freeTailBlocks);
   initializeRing(&journal->activeTailBlocks);
 
-  journal->threadID        = getJournalZoneThread(threadConfig);
+  // journal->threadID        = getJournalZoneThread(threadConfig);
+  ThreadID threadID        = getJournalZoneThread(getThreadConfig(vdo), zoneNumber);
+  journal->zoneNumber      = zoneNumber;
+  journal->nextJournal     = nextJournal;
+  journal->threadData      = &vdo->threadData[threadID];
+
   journal->partition       = partition;
   journal->nonce           = nonce;
   journal->recoveryCount   = computeRecoveryCountByte(recoveryCount);
@@ -426,8 +444,9 @@ int makeRecoveryJournal(Nonce                 nonce,
       pushRingNode(&journal->freeTailBlocks, &block->ringNode);
     }
 
+    const ThreadConfig *threadConfig = getThreadConfig(vdo);
     result = makeLockCounter(layer, journal, reapRecoveryJournalCallback,
-                             journal->threadID, threadConfig->logicalZoneCount,
+                             journal->threadData->threadID, threadConfig->logicalZoneCount,
                              threadConfig->physicalZoneCount, journal->size,
                              &journal->lockCounter);
     if (result != VDO_SUCCESS) {
@@ -451,7 +470,7 @@ int makeRecoveryJournal(Nonce                 nonce,
     }
 
     setActiveBlock(journal);
-    journal->flushVIO->completion.callbackThreadID = journal->threadID;
+    journal->flushVIO->completion.callbackThreadID = journal->threadData->threadID;
   }
 
   *journalPtr = journal;
@@ -1178,10 +1197,52 @@ BlockCount getJournalLogicalBlocksUsed(const VDO *vdo)
 }
 
 /**********************************************************************/
+ThreadID getJournalZoneThreadID(const RecoveryJournal *journal)
+{
+  return journal->threadData->threadID;
+}
+
+/**********************************************************************/
 // RecoveryJournalStatistics getRecoveryJournalStatistics(const RecoveryJournal *journal)
 RecoveryJournalStatistics
 getRecoveryJournalStatistics(const VDO *vdo)
 {
+  const ThreadConfig *threadConfig = getThreadConfig(vdo);
+  
+  CommitStatistics entriesStat = {
+    .started    = 0,
+    .written    = 0,
+    .committed  = 0,
+  };
+  CommitStatistics blocksStat = {
+    .started    = 0,
+    .written    = 0,
+    .committed  = 0,
+  };
+  RecoveryJournalStatistics journalStat = {
+    .diskFull   = 0,
+    .slabJournalCommitsRequested  = 0,
+    .entries    = NULL,
+    .blocks     = NULL,
+  };
+
+  for (ZoneCount zone = 0; zone < threadConfig->journalCount; zone++) {
+    RecoveryJournalStatistics stat = vdo->recoveryJournals[zone]->events;
+    entriesStat.started   += stat.entriesStat.started;
+    entriesStat.written   += stat.entriesStat.written;
+    entriesStat.committed += stat.entriesStat.committed;
+    blocksStat.started    += stat.blocksStat.started;
+    blocksStat.written    += stat.blocksStat.written;
+    blocksStat.committed  += stat.blocksStat.committed;
+    journalStat.diskFull  += stat.diskFull;
+    journalStat.slabJournalCommitsRequested += stat.slabJournalCommitsRequested;
+  }
+
+  journalStat.entriesStat = entriesStat;
+  journalStat.blocksStat = blocksStat;
+
+  return journalStat;
+
   // return journal->events;
 }
 

@@ -152,7 +152,7 @@ static void closeJournal(VDOCompletion *completion)
 {
   VDO *vdo = vdoFromCloseSubTask(completion);
   prepareSubTask(vdo, saveDepot, getAdminThread(getThreadConfig(vdo)));
-  closeRecoveryJournal(vdo->recoveryJournal, completion);
+  closeRecoveryJournal(vdo->recoveryJournals[0], completion);
 }
 
 /**
