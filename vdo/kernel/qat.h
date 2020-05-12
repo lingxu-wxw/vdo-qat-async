@@ -53,6 +53,12 @@
 #define	QAT_STAT_BUMP(stat) \
 	QAT_STAT_INCR(stat, 1)
 
+/* macros defining encryption lengths */
+#define	QAT_OBJSET_MAC_LEN		32
+#define	QAT_DATA_IV_LEN			12
+#define	QAT_DATA_SALT_LEN		8
+#define	QAT_DATA_MAC_LEN		16
+
 /* inlined for performance */
 static inline struct page *
 qat_mem_to_page(void *addr)

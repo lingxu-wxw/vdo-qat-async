@@ -45,8 +45,8 @@ static Cpa32U inst_num = 0;
 static Cpa16U num_inst = 0;
 static CpaInstanceHandle cy_inst_handles[QAT_CRYPT_MAX_INSTANCES];
 static boolean_t qat_cy_init_done = B_FALSE;
-int zfs_qat_encrypt_disable = 0;
-int zfs_qat_checksum_disable = 0;
+// int zfs_qat_encrypt_disable = 0;
+// int zfs_qat_checksum_disable = 0;
 
 typedef struct cy_callback {
 	CpaBoolean verify_result;
@@ -146,8 +146,9 @@ fail:
 /**********************************************************************/
 void qat_cy_fini(void)
 {
-    if (!qat_cy_init_done)
+    if (!qat_cy_init_done){
 		return;
+	}
 
 	qat_cy_clean();
 }
@@ -163,6 +164,9 @@ static CpaStatus qat_init_crypt_session_ctx(qat_encrypt_dir_t dir, CpaInstanceHa
 	Cpa32U hash_algorithm;
 	CpaCySymSessionSetupData sd = { 0 };
 
+	ciper_algorithm = CPA_CY_SYM_CIPHER_AES_GCM;
+	hash_algorithm = CPA_CY_SYM_HASH_AES_GCM;
+
 	// CCM是什么
 	/* if (zio_crypt_table[crypt].ci_crypt_type == ZC_TYPE_CCM) {
 		return (CPA_STATUS_FAIL);
@@ -176,7 +180,7 @@ static CpaStatus qat_init_crypt_session_ctx(qat_encrypt_dir_t dir, CpaInstanceHa
 	sd.cipherSetupData.cipherKeyLenInBytes = key->ck_length / 8;
 	sd.hashSetupData.hashAlgorithm = hash_algorithm;
 	sd.hashSetupData.hashMode = CPA_CY_SYM_HASH_MODE_AUTH;
-	sd.hashSetupData.digestResultLenInBytes = ZIO_DATA_MAC_LEN;
+	sd.hashSetupData.digestResultLenInBytes = QAT_DATA_MAC_LEN;
 	sd.hashSetupData.authModeSetupData.aadLenInBytes = aad_len;
 	sd.sessionPriority = CPA_CY_PRIORITY_NORMAL;
 	sd.symOperation = CPA_CY_SYM_OP_ALGORITHM_CHAINING;
@@ -188,12 +192,13 @@ static CpaStatus qat_init_crypt_session_ctx(qat_encrypt_dir_t dir, CpaInstanceHa
 		    CPA_CY_SYM_CIPHER_DIRECTION_ENCRYPT;
 		sd.algChainOrder =
 		    CPA_CY_SYM_ALG_CHAIN_ORDER_HASH_THEN_CIPHER;
-	} else {
-		// ASSERT3U(dir, ==, QAT_DECRYPT);
+	} else if (dir == QAT_DECRYPT) {
 		sd.cipherSetupData.cipherDirection =
 		    CPA_CY_SYM_CIPHER_DIRECTION_DECRYPT;
 		sd.algChainOrder =
 		    CPA_CY_SYM_ALG_CHAIN_ORDER_CIPHER_THEN_HASH;
+	} else {
+		return (CPA_STATUS_FAIL);
 	}
 
 	status = cpaCySymSessionCtxGetSize(inst_handle, &sd, &ctx_size);
@@ -241,7 +246,7 @@ static CpaStatus qat_init_checksum_session_ctx(CpaInstanceHandle inst_handle,
 	sd.symOperation = CPA_CY_SYM_OP_HASH;
 	sd.hashSetupData.hashAlgorithm = hash_algorithm;
 	sd.hashSetupData.hashMode = CPA_CY_SYM_HASH_MODE_PLAIN;
-	sd.hashSetupData.digestResultLenInBytes = sizeof (zio_cksum_t);
+	sd.hashSetupData.digestResultLenInBytes = sizeof (qat_cksum_t);
 	sd.digestIsAppended = CPA_FALSE;
 	sd.verifyDigest = CPA_FALSE;
 
@@ -338,15 +343,16 @@ int qat_crypt(DataKVIO* dataKVIO, qat_encrypt_dir_t dir, uint8_t *src_buf, uint8
 		QAT_STAT_INCR(decrypt_total_in_bytes, enc_len);
 	}
 
-	i = (Cpa32U)atomic_inc_32_nv(&inst_num) % num_inst;
+	i = (Cpa32U)atomic_inc_return((atomic_t *)&inst_num) % num_inst;
 	cy_inst_handle = cy_inst_handles[i];
 
 	status = qat_init_crypt_session_ctx(dir, cy_inst_handle,
 	    &cy_session_ctx, key, crypt, aad_len);
 	if (status != CPA_STATUS_SUCCESS) {
 		/* don't count CCM as a failure since it's not supported */
-		if (zio_crypt_table[crypt].ci_crypt_type == ZC_TYPE_GCM)
+		if (zio_crypt_table[crypt].ci_crypt_type == QC_TYPE_GCM) {
 			QAT_STAT_BUMP(crypt_fails);
+		}
 		return (status);
 	}
 
@@ -357,30 +363,36 @@ int qat_crypt(DataKVIO* dataKVIO, qat_encrypt_dir_t dir, uint8_t *src_buf, uint8
 	 */
 	status = qat_init_cy_buffer_lists(cy_inst_handle, nr_bufs,
 	    &src_buffer_list, &dst_buffer_list);
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	status = QAT_PHYS_CONTIG_ALLOC(&flat_src_buf_array,
 	    nr_bufs * sizeof (CpaFlatBuffer));
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 	status = QAT_PHYS_CONTIG_ALLOC(&flat_dst_buf_array,
 	    nr_bufs * sizeof (CpaFlatBuffer));
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 	status = QAT_PHYS_CONTIG_ALLOC(&op_data.pDigestResult,
-	    ZIO_DATA_MAC_LEN);
-	if (status != CPA_STATUS_SUCCESS)
+		QAT_DATA_MAC_LEN);
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 	status = QAT_PHYS_CONTIG_ALLOC(&op_data.pIv,
-	    ZIO_DATA_IV_LEN);
-	if (status != CPA_STATUS_SUCCESS)
+	    QAT_DATA_IV_LEN);
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 	if (aad_len > 0) {
 		status = QAT_PHYS_CONTIG_ALLOC(&op_data.pAdditionalAuthData,
 		    aad_len);
-		if (status != CPA_STATUS_SUCCESS)
+		if (status != CPA_STATUS_SUCCESS) {
 			goto fail;
+		}
 		bcopy(aad_buf, op_data.pAdditionalAuthData, aad_len);
 	}
 
@@ -426,18 +438,20 @@ int qat_crypt(DataKVIO* dataKVIO, qat_encrypt_dir_t dir, uint8_t *src_buf, uint8
 	op_data.hashStartSrcOffsetInBytes = 0;
 	op_data.messageLenToHashInBytes = 0;
 	op_data.messageLenToCipherInBytes = enc_len;
-	op_data.ivLenInBytes = ZIO_DATA_IV_LEN;
-	bcopy(iv_buf, op_data.pIv, ZIO_DATA_IV_LEN);
+	op_data.ivLenInBytes = QAT_DATA_IV_LEN;
+	bcopy(iv_buf, op_data.pIv, QAT_DATA_IV_LEN);
 	/* if dir is QAT_DECRYPT, copy digest_buf to pDigestResult */
-	if (dir == QAT_DECRYPT)
-		bcopy(digest_buf, op_data.pDigestResult, ZIO_DATA_MAC_LEN);
+	if (dir == QAT_DECRYPT) {
+		bcopy(digest_buf, op_data.pDigestResult, QAT_DATA_MAC_LEN);
+	}
 
 	cb.verify_result = CPA_FALSE;
 	init_completion(&cb.complete);
 	status = cpaCySymPerformOp(cy_inst_handle, &cb, &op_data,
 	    &src_buffer_list, &dst_buffer_list, NULL);
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	/* we now wait until the completion of the operation. */
 	wait_for_completion(&cb.complete);
@@ -449,24 +463,28 @@ int qat_crypt(DataKVIO* dataKVIO, qat_encrypt_dir_t dir, uint8_t *src_buf, uint8
 
 	if (dir == QAT_ENCRYPT) {
 		/* if dir is QAT_ENCRYPT, save pDigestResult to digest_buf */
-		bcopy(op_data.pDigestResult, digest_buf, ZIO_DATA_MAC_LEN);
+		bcopy(op_data.pDigestResult, digest_buf, QAT_DATA_MAC_LEN);
 		QAT_STAT_INCR(encrypt_total_out_bytes, enc_len);
 	} else {
 		QAT_STAT_INCR(decrypt_total_out_bytes, enc_len);
 	}
 
 fail:
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		QAT_STAT_BUMP(crypt_fails);
+	}
 
-	for (i = 0; i < in_page_num; i++)
+	for (i = 0; i < in_page_num; i++) {
 		kunmap(in_pages[i]);
-	for (i = 0; i < out_page_num; i++)
+	}
+	for (i = 0; i < out_page_num; i++) {
 		kunmap(out_pages[i]);
+	}
 
 	cpaCySymRemoveSession(cy_inst_handle, cy_session_ctx);
-	if (aad_len > 0)
+	if (aad_len > 0) {
 		QAT_PHYS_CONTIG_FREE(op_data.pAdditionalAuthData);
+	}
 	QAT_PHYS_CONTIG_FREE(op_data.pIv);
 	QAT_PHYS_CONTIG_FREE(op_data.pDigestResult);
 	QAT_PHYS_CONTIG_FREE(src_buffer_list.pPrivateMetaData);
@@ -479,7 +497,7 @@ fail:
 }
 
 /**********************************************************************/
-int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, zio_cksum_t *zcp)
+int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, qat_cksum_t *qcp)
 {
 	CpaStatus status;
 	Cpa16U i;
@@ -500,10 +518,10 @@ int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, zio_cksum_t *zcp)
 
 	// just copy now
 
-		QAT_STAT_BUMP(cksum_requests);
+	QAT_STAT_BUMP(cksum_requests);
 	QAT_STAT_INCR(cksum_total_in_bytes, size);
 
-	i = (Cpa32U)atomic_inc_32_nv(&inst_num) % num_inst;
+	i = (Cpa32U)atomic_inc_return((atomic_t *)&inst_num) % num_inst;
 	cy_inst_handle = cy_inst_handles[i];
 
 	status = qat_init_checksum_session_ctx(cy_inst_handle,
@@ -511,8 +529,9 @@ int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, zio_cksum_t *zcp)
 	if (status != CPA_STATUS_SUCCESS) {
 		/* don't count unsupported checksums as a failure */
 		if (cksum == ZIO_CHECKSUM_SHA256 ||
-		    cksum == ZIO_CHECKSUM_SHA512)
+		    cksum == ZIO_CHECKSUM_SHA512) {
 			QAT_STAT_BUMP(cksum_fails);
+		}
 		return (status);
 	}
 
@@ -523,17 +542,20 @@ int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, zio_cksum_t *zcp)
 	 */
 	status = qat_init_cy_buffer_lists(cy_inst_handle, nr_bufs,
 	    &src_buffer_list, &src_buffer_list);
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	status = QAT_PHYS_CONTIG_ALLOC(&flat_src_buf_array,
 	    nr_bufs * sizeof (CpaFlatBuffer));
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 	status = QAT_PHYS_CONTIG_ALLOC(&digest_buffer,
-	    sizeof (zio_cksum_t));
-	if (status != CPA_STATUS_SUCCESS)
+	    sizeof (qat_cksum_t));
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	bytes_left = size;
 	data = buf;
@@ -562,8 +584,9 @@ int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, zio_cksum_t *zcp)
 	init_completion(&cb.complete);
 	status = cpaCySymPerformOp(cy_inst_handle, &cb, &op_data,
 	    &src_buffer_list, &src_buffer_list, NULL);
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		goto fail;
+	}
 
 	/* we now wait until the completion of the operation. */
 	wait_for_completion(&cb.complete);
@@ -573,14 +596,16 @@ int qat_checksum(uint64_t cksum, uint8_t *buf, uint64_t size, zio_cksum_t *zcp)
 		goto fail;
 	}
 
-	bcopy(digest_buffer, zcp, sizeof (zio_cksum_t));
+	bcopy(digest_buffer, qcp, sizeof (qat_cksum_t));
 
 fail:
-	if (status != CPA_STATUS_SUCCESS)
+	if (status != CPA_STATUS_SUCCESS) {
 		QAT_STAT_BUMP(cksum_fails);
+	}
 
-	for (i = 0; i < page_num; i++)
+	for (i = 0; i < page_num; i++) {
 		kunmap(in_pages[i]);
+	}
 
 	cpaCySymRemoveSession(cy_inst_handle, cy_session_ctx);
 	QAT_PHYS_CONTIG_FREE(digest_buffer);

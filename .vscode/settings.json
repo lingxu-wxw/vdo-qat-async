@@ -2,6 +2,8 @@
     "files.associations": {
         "hashlock.h": "c",
         "lz4.h": "c",
-        "constants.h": "c"
+        "constants.h": "c",
+        "blockmap.h": "c",
+        "permassert.h": "c"
     }
 }

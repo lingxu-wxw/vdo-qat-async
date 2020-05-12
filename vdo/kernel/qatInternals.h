@@ -19,6 +19,15 @@ typedef enum {
 	B_TRUE = 1,
 } boolean_t;
 
+typedef enum qat_crypt_type {
+	QC_TYPE_NONE = 0,
+	QC_TYPE_CCM,
+	QC_TYPE_GCM
+} qat_crypt_type_t;
+
+typedef struct qat_cksum {
+	uint64_t	qc_word[4];
+} qat_cksum_t;
 
 typedef struct
 {
